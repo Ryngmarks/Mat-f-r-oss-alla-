@@ -32,42 +32,55 @@ Så länge `js/config.js` är tom körs appen i **lokalt läge**: allt sparas i 
 När Supabase ska kopplas på:
 
 1. Skapa ett projekt på [supabase.com](https://supabase.com).
-2. Kör `supabase/schema.sql` i **SQL Editor**. Den skapar tabellerna, standardkategorierna
-   och bucketen `meal-images` för bilder.
+2. Kör `supabase/schema.sql` i **SQL Editor**. Den skapar tabellerna, reglerna och den
+   privata bucketen `meal-images`. Filen bygger om tabellerna från grunden, så befintliga
+   maträtter raderas om den körs igen.
 3. Fyll i `SUPABASE_URL` och `SUPABASE_ANON_KEY` i `js/config.js`
    (finns under *Project Settings → API*).
 
 Datan i lokalt läge flyttas inte med automatiskt.
 
-## Användare
+## Användare och matsedlar
 
-Med Supabase måste man logga in. Alla inloggade delar samma matbibliotek.
+Med Supabase måste man logga in. **Varje användare har en egen matsedel** som ingen annan ser.
+En matsedel blir gemensam först när någon i den bjuder in en e-postadress och mottagaren
+godkänner. Man kan ha flera matsedlar, till exempel en egen och en delad med familjen.
+
+Allt är separerat per matsedel: maträtter, ingredienser, kategorier och bilder. Bilderna
+ligger i en privat bucket och visas med tidsbegränsade länkar. Databasens regler (RLS)
+släpper bara fram matsedlar man är medlem i.
 
 - **Skapa användare:** *Authentication → Users → Add user → Create new user*. Fyll i e-post
   och lösenord och kryssa i **Auto Confirm User**. Ingen e-post skickas.
 - **Stäng av egen registrering:** *Authentication → Sign In / Providers* → slå av
   **Allow new users to sign up**. Då kan bara de du skapat logga in.
-- **Byta lösenord:** öppna användaren i listan och sätt ett nytt.
-
-Har du redan kört en äldre `schema.sql`? Kör då `supabase/02_inloggning.sql` en gång.
+- **Dela:** tryck på matsedelns namn uppe till vänster → *Dela* → skriv e-postadressen.
+  Mottagaren ser inbjudan när hen loggar in och väljer *Godkänn* eller *Nej tack*.
+- **Ägaren** kan ta bort medlemmar och hela matsedeln. **Medlemmar** kan lämna.
 
 ## Struktur
 
 ```
 index.html          Skal, typsnitt, dialog
 css/styles.css      All design (mobile first, mörkt läge)
-js/app.js           Vyer och router: startsida, detaljsida, skapa/redigera
+js/app.js           Vyer och router: inloggning, startsida, detaljsida, skapa/redigera
+js/libraries.js     Panelen Matsedlar: byta, skapa, dela, godkänna inbjudningar
+js/ui.js            Små delade hjälpare (escape, toast, dialog, ikoner)
 js/store.js         Datalager – LocalStore och SupabaseStore med samma gränssnitt
 js/image.js         Skalar ner och komprimerar bilder före uppladdning
 js/config.js        Supabase-nycklar
-supabase/schema.sql Tabeller, kategorier, RLS och bildbucket
+supabase/schema.sql Tabeller, funktioner, RLS och privat bildbucket
 ```
 
 ## Datamodell
 
-- `meal` – id, name, description, image_url, instructions, created_at
-- `ingredient` – id, name
-- `category` – id, name, sort_order
+- `library` – id, name, created_by, created_at
+- `library_member` – library_id, user_id, role (`owner`/`member`)
+- `library_invite` – id, library_id, email, invited_by
+- `meal` – id, library_id, name, description, image_path, instructions, created_at
+- `ingredient` – id, library_id, name
+- `category` – id, library_id, name, sort_order
 - `meal_ingredient` – meal_id, ingredient_id, category_id, amount, unit, position
 
-Kategorierna läses från databasen. Ändra, lägg till eller sortera om dem i tabellen `category`.
+Varje ny matsedel får standardkategorierna Protein, Kolhydrater, Grönsaker, Sås och Övrigt.
+Kategorierna ligger i tabellen `category` och kan ändras per matsedel.

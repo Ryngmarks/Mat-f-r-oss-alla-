@@ -1,18 +1,20 @@
 import { createStore } from './store.js';
 import { resizeImage } from './image.js';
+import { esc, toast, confirmDialog, ICON } from './ui.js';
+import { openLibrarySheet } from './libraries.js';
 
 const app = document.getElementById('app');
 let store;
 let categories = [];
 let homeScroll = 0;
 let user = null;
+let libraries = [];
+let invites = [];
 
 /* ------------------------------------------------------------------ */
 /* Hjälpare                                                            */
 /* ------------------------------------------------------------------ */
 
-const esc = (s) =>
-  String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const categoryOrder = (id) => categories.find((c) => c.id === id)?.sort_order ?? 999;
 
@@ -71,31 +73,6 @@ document.addEventListener(
   true
 );
 
-let toastTimer;
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), 3800);
-}
-
-function confirmDelete() {
-  const dlg = document.getElementById('confirm');
-  return new Promise((resolve) => {
-    dlg.addEventListener('close', () => resolve(dlg.returnValue === 'ok'), { once: true });
-    dlg.returnValue = '';
-    dlg.showModal();
-  });
-}
-
-const ICON = {
-  back: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  edit: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  trash: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 12h10l1-12M9 7V4h6v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-  x: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-  camera: '<svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>',
-};
 
 /* ------------------------------------------------------------------ */
 /* Startsida                                                           */
@@ -123,18 +100,38 @@ async function renderHome() {
   app.innerHTML = `
     <header class="top">
       <div class="wrap top__inner">
-        <a href="#/" class="brand">Mat för oss alla</a>
+        ${
+          store.canShare
+            ? `<button type="button" class="lib-btn" data-libraries aria-label="Byt eller dela matsedel">
+                 <span class="brand">${esc(store.library.name)}</span>${ICON.chevron}
+                 ${invites.length ? '<span class="badge" aria-label="Ny inbjudan"></span>' : ''}
+               </button>`
+            : '<a href="#/" class="brand">Mat för oss alla</a>'
+        }
         <a href="#/ny" class="btn btn--primary top__add">+ Lägg till maträtt</a>
       </div>
     </header>
     <main class="wrap home">
+      ${
+        invites.length
+          ? `<button type="button" class="notice" data-libraries>
+               <span>📬 <strong>${esc(invites[0].invited_by || 'Någon')}</strong> vill dela ”${esc(invites[0].library_name)}” med dig</span>
+               <span class="notice__cta">Visa</span>
+             </button>`
+          : ''
+      }
       <h1 class="home__title">Vad är du sugen på?</h1>
+      ${
+        store.library.members > 1
+          ? `<p class="home__shared">Delad matsedel · ${store.library.members} personer</p>`
+          : ''
+      }
       ${
         meals.length
           ? `<ul class="grid">${cards}</ul>`
           : `<div class="empty">
                <div class="empty__emoji" aria-hidden="true">🍽️</div>
-               <h2>Biblioteket är tomt</h2>
+               <h2>Matsedeln är tom</h2>
                <p>Lägg till din första maträtt – en bild och några ingredienser räcker.</p>
                <a href="#/ny" class="btn btn--primary">+ Lägg till maträtt</a>
              </div>`
@@ -148,6 +145,11 @@ async function renderHome() {
     <a href="#/ny" class="fab" aria-label="Lägg till maträtt">+ Lägg till maträtt</a>`;
 
   app.querySelector('[data-signout]')?.addEventListener('click', () => store.signOut());
+  app.querySelectorAll('[data-libraries]').forEach((b) =>
+    b.addEventListener('click', () =>
+      openLibrarySheet({ store, user, state: () => ({ libraries, invites }), reload: loadLibraries, switchTo })
+    )
+  );
   requestAnimationFrame(() => window.scrollTo(0, homeScroll));
 }
 
@@ -217,7 +219,13 @@ async function renderDetail(id) {
   window.scrollTo(0, 0);
 
   app.querySelector('[data-delete]').addEventListener('click', async () => {
-    if (!(await confirmDelete())) return;
+    if (
+      !(await confirmDialog({
+        title: 'Ta bort maträtten?',
+        text: 'Den försvinner från matsedeln. Det går inte att ångra.',
+      }))
+    )
+      return;
     try {
       await store.deleteMeal(meal.id);
       toast(`${meal.name} är borttagen`);
@@ -628,11 +636,40 @@ async function route() {
 }
 
 let listening = false;
+const prefKey = () => `mat-for-oss-alla.library.${user?.id}`;
+
+async function loadLibraries() {
+  await store.ensureLibrary();
+  [libraries, invites] = await Promise.all([store.listLibraries(), store.myInvites()]);
+}
+
+// Byter aktiv matsedel. id = null väljer den senast använda (eller första).
+async function switchTo(id) {
+  if (id === null) await loadLibraries();
+  let saved = null;
+  try {
+    saved = localStorage.getItem(prefKey());
+  } catch {}
+  store.library = libraries.find((l) => l.id === id) ?? libraries.find((l) => l.id === saved) ?? libraries[0];
+  try {
+    localStorage.setItem(prefKey(), store.library.id);
+  } catch {}
+  categories = await store.listCategories();
+  homeScroll = 0;
+  if (location.hash && location.hash !== '#/') location.hash = '#/';
+  else route();
+}
 
 // Körs när användaren är inloggad (eller direkt i lokalt läge).
 async function enter() {
   user = await store.getUser();
   if (!user) return renderLogin();
+  await loadLibraries();
+  let saved = null;
+  try {
+    saved = localStorage.getItem(prefKey());
+  } catch {}
+  store.library = libraries.find((l) => l.id === saved) ?? libraries[0];
   categories = await store.listCategories();
   if (!listening) {
     window.addEventListener('hashchange', route);

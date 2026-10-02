@@ -991,3 +991,258 @@ h3 {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ---------- Matsedlar ---------- */
+
+.lib-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  max-width: 70vw;
+  padding: 0 12px 0 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.lib-btn .brand {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-btn svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.badge {
+  position: absolute;
+  top: 8px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin: 8px 0 4px;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notice__cta {
+  flex: none;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.home__shared {
+  margin: -16px 0 24px;
+  color: var(--muted);
+}
+
+.sheet {
+  border: 0;
+  padding: 0;
+  margin: auto auto 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  border-radius: 28px 28px 0 0;
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: var(--shadow-lift);
+}
+
+.sheet[open] {
+  animation: sheet-up 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+.sheet::backdrop {
+  background: rgb(20 12 6 / 0.45);
+  backdrop-filter: blur(3px);
+}
+
+@media (min-width: 640px) {
+  .sheet {
+    margin: auto;
+    border-radius: 28px;
+  }
+}
+
+.sheet__body {
+  padding: 20px 18px calc(24px + env(safe-area-inset-bottom));
+}
+
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.sheet__title {
+  font-family: var(--display);
+  font-size: 1.7rem;
+}
+
+.sheet__sec {
+  margin-top: 26px;
+}
+
+.sheet__h {
+  font-family: var(--font);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.sheet__note {
+  margin: -2px 0 12px;
+  font-size: 0.95rem;
+}
+
+.sheet__foot {
+  margin: 28px 0 0;
+  text-align: center;
+  font-size: 0.92rem;
+}
+
+.libs,
+.people {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.lib {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lib.is-on {
+  border-color: var(--accent);
+}
+
+.lib__text {
+  display: grid;
+  min-width: 0;
+}
+
+.lib__name {
+  font-weight: 600;
+  font-size: 1.05rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib small {
+  color: var(--muted);
+}
+
+.lib__check {
+  color: var(--accent);
+}
+
+.people li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 52px;
+  padding: 6px 6px 6px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.people li.is-pending {
+  background: transparent;
+  border: 1.5px dashed var(--line);
+}
+
+.people__end {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.inline {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.inline .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline .btn {
+  flex: none;
+  min-height: 50px;
+}
+
+.invite {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  margin-bottom: 8px;
+}
+
+.invite__text {
+  display: grid;
+}
+
+.invite__text small {
+  color: var(--muted);
+}
+
+.invite__btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.danger-text {
+  color: var(--danger);
+}
