@@ -3,6 +3,7 @@
 // eller lista och okända kategorier hanteras.
 
 import { esc, toast, ICON } from './ui.js';
+import { resizeImage } from './image.js';
 
 const fold = (s) =>
   String(s ?? '')
@@ -110,6 +111,7 @@ export async function renderImport({ app, store, categories }) {
   const existing = new Set((await store.listMeals()).map((m) => fold(m.name)));
   const catName = (id) => categories.find((c) => c.id === id)?.name ?? '';
   let parsed = [];
+  const images = new Map(); // rättens namn (normaliserat) → { blob, url }
 
   app.innerHTML = `
     <header class="top top--form">
@@ -126,7 +128,7 @@ export async function renderImport({ app, store, categories }) {
         <p class="muted import__help">
           Kopiera instruktionen och klistra in den i en ny chatt i ChatGPT. Berätta sedan om
           maträtterna – skriv eller använd röstläget. Säg <strong>”klar”</strong> när du är färdig,
-          så svarar ChatGPT med en fil i rätt format.
+          så svarar ChatGPT med en fil i rätt format och skapar en bild till varje rätt.
         </p>
         <button type="button" class="btn btn--soft" data-copy>Kopiera instruktion till ChatGPT</button>
       </section>
@@ -143,7 +145,8 @@ export async function renderImport({ app, store, categories }) {
       </section>
 
       <section class="field" data-preview hidden>
-        <span class="label"><span class="num">3</span>Välj vad som ska sparas</span>
+        <span class="label"><span class="num">3</span>Välj rätter och lägg till bilder</span>
+        <p class="muted import__help">Spara bilderna från ChatGPT och tryck på kameran vid varje rätt. På datorn kan du också kopiera en bild och klistra in den här.</p>
         <ul class="import__list" data-list></ul>
       </section>
 
@@ -175,8 +178,9 @@ export async function renderImport({ app, store, categories }) {
         const dup = existing.has(fold(m.name));
         const steps = m.instructions ? m.instructions.split('\n').length : 0;
         const ings = m.ingredients.map((x) => `${esc(x.name)} <small>${esc(catName(x.category_id))}</small>`).join(', ');
+        const img = images.get(fold(m.name));
         return `
-          <li>
+          <li class="import__row">
             <label class="import__item">
               <input type="checkbox" value="${i}" ${dup ? '' : 'checked'}>
               <span class="import__body">
@@ -186,6 +190,10 @@ export async function renderImport({ app, store, categories }) {
                 <small class="muted">${steps ? `${steps} steg` : 'Utan tillagning'}</small>
               </span>
             </label>
+            <label class="import__img${img ? ' has-image' : ''}" for="import-img-${i}" title="${img ? 'Byt bild' : 'Lägg till bild'}">
+              ${img ? `<img src="${img.url}" alt="">` : `${ICON.camera}<small>Bild</small>`}
+            </label>
+            <input type="file" id="import-img-${i}" accept="image/*" class="sr-only" data-img="${i}">
           </li>`;
       })
       .join('');
@@ -221,7 +229,34 @@ export async function renderImport({ app, store, categories }) {
     read(input.value);
   });
 
-  list.addEventListener('change', updateSave);
+  async function setImage(i, file) {
+    if (!file?.type.startsWith('image/') || !parsed[i]) return;
+    try {
+      const blob = await resizeImage(file, store.mode === 'local' ? 1200 : 1800);
+      const key = fold(parsed[i].name);
+      if (images.get(key)) URL.revokeObjectURL(images.get(key).url);
+      images.set(key, { blob, url: URL.createObjectURL(blob) });
+      const box = list.querySelector(`input[type=checkbox][value="${i}"]`);
+      if (box) box.checked = true;
+      draw();
+    } catch {
+      toast('Bilden gick inte att läsa. Prova en annan.');
+    }
+  }
+
+  list.addEventListener('change', (e) => {
+    if (e.target.matches('[data-img]')) setImage(+e.target.dataset.img, e.target.files[0]);
+    else updateSave();
+  });
+
+  // Kopiera en bild i ChatGPT och klistra in här – den hamnar på första rätten utan bild.
+  app.addEventListener('paste', (e) => {
+    const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (!file || !parsed.length) return;
+    e.preventDefault();
+    const i = parsed.findIndex((m) => !images.has(fold(m.name)));
+    setImage(i >= 0 ? i : 0, file);
+  });
 
   $('[data-copy]').addEventListener('click', async (e) => {
     try {
@@ -241,10 +276,15 @@ export async function renderImport({ app, store, categories }) {
     try {
       for (const meal of chosen) {
         saveBtn.textContent = `Importerar ${done + 1} av ${chosen.length}…`;
-        await store.saveMeal(meal);
+        await store.saveMeal(meal, { imageBlob: images.get(fold(meal.name))?.blob });
         done++;
       }
-      toast(done === 1 ? '1 maträtt importerad – lägg gärna till en bild' : `${done} maträtter importerade – lägg gärna till bilder`);
+      const missing = chosen.filter((m) => !images.has(fold(m.name))).length;
+      toast(
+        `${done === 1 ? '1 maträtt importerad' : `${done} maträtter importerade`}${
+          missing ? ' – lägg gärna till bilder senare' : ''
+        }`
+      );
       location.hash = '#/';
     } catch (e) {
       toast(`${done} sparades. Fel: ${e.message}`);

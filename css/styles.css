@@ -1335,3 +1335,50 @@ h3 {
 .import__body .pill {
   justify-self: start;
 }
+
+.import__row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.import__row .import__item {
+  flex: 1;
+  min-width: 0;
+}
+
+.import__img {
+  flex: none;
+  width: 88px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--accent);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.import__img svg {
+  width: 28px;
+  height: 28px;
+}
+
+.import__img small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.import__img.has-image {
+  border: 0;
+  padding: 0;
+}
+
+.import__img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
