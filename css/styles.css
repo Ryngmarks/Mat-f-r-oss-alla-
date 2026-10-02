@@ -1458,7 +1458,7 @@ h3 {
   overflow: hidden;
   background: var(--surface);
   box-shadow: var(--shadow-lift);
-  touch-action: pan-y;
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   cursor: grab;
@@ -1964,4 +1964,32 @@ h3 {
 
 .empty p {
   overflow-wrap: anywhere;
+}
+
+/* Swipe-vyn ligger fast över hela skärmen så att sidan aldrig scrollar under dragningen. */
+.swipe-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.swipe-screen .top {
+  position: static;
+}
+
+.swipe-screen .swipe {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.swipe-card,
+.swipe-card * {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
 }

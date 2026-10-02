@@ -162,7 +162,7 @@ export async function renderSwipe({ app, store, media, tagline, showResult = fal
     const next = byId.get(state.order[i + 1]);
     const yesCount = state.history.filter((h) => h.yes).length;
 
-    app.innerHTML = `${header('Swipa fram middagen')}
+    app.innerHTML = `<div class="swipe-screen">${header('Swipa fram middagen')}
       <main class="swipe">
         <p class="swipe__progress">${i + 1} av ${state.order.length}${yesCount ? ` · <strong>${yesCount} ja</strong>` : ''}</p>
         <div class="swipe__deck">
@@ -176,8 +176,9 @@ export async function renderSwipe({ app, store, media, tagline, showResult = fal
           <button type="button" class="swipe__done" data-done>Klar</button>
         </div>
         <p class="swipe__hint muted">Swipa höger för ja, vänster för nej</p>
-      </main>`;
+      </main></div>`;
 
+    window.scrollTo(0, 0);
     const card = app.querySelector('.swipe-card.is-top');
     const yesStamp = card.querySelector('.stamp--yes');
     const noStamp = card.querySelector('.stamp--no');
@@ -202,6 +203,9 @@ export async function renderSwipe({ app, store, media, tagline, showResult = fal
     let dx = 0;
     let t0 = 0;
     let dragging = false;
+
+    // Låt aldrig webbläsaren scrolla eller zooma när man drar i högen (viktigt på iOS).
+    app.querySelector('.swipe__deck').addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
     card.addEventListener('pointerdown', (e) => {
       if (busy || e.button > 0) return;
