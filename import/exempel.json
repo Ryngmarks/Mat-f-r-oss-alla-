@@ -1,0 +1,36 @@
+{
+  "format": "mat-for-oss-alla",
+  "version": 1,
+  "meals": [
+    {
+      "name": "Kyckling Curry",
+      "description": "Mild och krämig curry som hela familjen gillar.",
+      "ingredients": [
+        { "name": "Kyckling", "category": "Protein", "amount": "600", "unit": "g" },
+        { "name": "Ris", "category": "Kolhydrater", "amount": "4", "unit": "dl" },
+        { "name": "Lök", "category": "Grönsaker", "amount": "1", "unit": "st" },
+        { "name": "Paprika", "category": "Grönsaker", "amount": "1", "unit": "st" },
+        { "name": "Currysås", "category": "Sås", "amount": "4", "unit": "dl" }
+      ],
+      "instructions": [
+        "Skär kycklingen i bitar.",
+        "Stek kyckling och lök.",
+        "Tillsätt currysåsen och låt puttra.",
+        "Koka riset.",
+        "Servera."
+      ]
+    },
+    {
+      "name": "Tacos",
+      "description": "Fredagsmys med krispiga tillbehör och mycket salsa.",
+      "ingredients": [
+        { "name": "Köttfärs", "category": "Protein", "amount": "500", "unit": "g" },
+        { "name": "Tortilla", "category": "Kolhydrater", "amount": "8", "unit": "st" },
+        { "name": "Tomat", "category": "Grönsaker", "amount": "2", "unit": "st" },
+        { "name": "Salsa", "category": "Sås", "amount": "1", "unit": "burk" },
+        { "name": "Tacokrydda", "category": "Övrigt", "amount": "1", "unit": "påse" }
+      ],
+      "instructions": []
+    }
+  ]
+}

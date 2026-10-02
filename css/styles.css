@@ -1246,3 +1246,92 @@ h3 {
 .danger-text {
   color: var(--danger);
 }
+
+/* ---------- Import ---------- */
+
+.num {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 10px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.import__help {
+  margin: 0 0 14px;
+}
+
+.import__text {
+  font: 0.9rem/1.45 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.import__or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.import__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.import__item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.import__item input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.import__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.import__body strong {
+  font-family: var(--display);
+  font-size: 1.2rem;
+}
+
+.import__ings small {
+  color: var(--muted);
+}
+
+.pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted);
+  font: 500 0.75rem var(--font);
+  vertical-align: 3px;
+}
+
+.foot .link {
+  display: inline-block;
+}
+
+.import__body .pill {
+  justify-self: start;
+}

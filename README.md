@@ -58,6 +58,38 @@ släpper bara fram matsedlar man är medlem i.
   Mottagaren ser inbjudan när hen loggar in och väljer *Godkänn* eller *Nej tack*.
 - **Ägaren** kan ta bort medlemmar och hela matsedeln. **Medlemmar** kan lämna.
 
+## Importera från ChatGPT
+
+Man kan prata in maträtter i ChatGPT och importera dem i stället för att skriva.
+
+1. Startsidan → **Importera maträtter** → **Kopiera instruktion till ChatGPT**
+   (texten finns också i [`import/chatgpt-instruktion.md`](import/chatgpt-instruktion.md)).
+2. Klistra in den i en ny chatt och berätta om maträtterna – skriv eller använd röstläget.
+   Säg **”klar”** så svarar ChatGPT med ett JSON-kodblock.
+3. Kopiera svaret och klistra in det på importsidan, eller spara det som en `.json`-fil och
+   välj filen. Bocka i vilka rätter som ska sparas och tryck **Importera**.
+
+Formatet (se [`import/exempel.json`](import/exempel.json)):
+
+```json
+{
+  "format": "mat-for-oss-alla",
+  "version": 1,
+  "meals": [
+    {
+      "name": "Tacos",
+      "description": "Fredagsmys.",
+      "ingredients": [{ "name": "Köttfärs", "category": "Protein", "amount": "500", "unit": "g" }],
+      "instructions": ["Bryn färsen.", "Servera."]
+    }
+  ]
+}
+```
+
+Bara `name` krävs. Kategorier matchas på namn mot matsedelns kategorier; okända hamnar i
+Övrigt. Rätter som redan finns med samma namn är urbockade från början. Bilder ingår inte –
+de läggs till i appen efteråt.
+
 ## Struktur
 
 ```
@@ -65,10 +97,12 @@ index.html          Skal, typsnitt, dialog
 css/styles.css      All design (mobile first, mörkt läge)
 js/app.js           Vyer och router: inloggning, startsida, detaljsida, skapa/redigera
 js/libraries.js     Panelen Matsedlar: byta, skapa, dela, godkänna inbjudningar
+js/import.js        Import av maträtter (t.ex. från ChatGPT)
 js/ui.js            Små delade hjälpare (escape, toast, dialog, ikoner)
 js/store.js         Datalager – LocalStore och SupabaseStore med samma gränssnitt
 js/image.js         Skalar ner och komprimerar bilder före uppladdning
 js/config.js        Supabase-nycklar
+import/             Instruktion till ChatGPT och exempelfil
 supabase/schema.sql Tabeller, funktioner, RLS och privat bildbucket
 ```
 

@@ -2,6 +2,7 @@ import { createStore } from './store.js';
 import { resizeImage } from './image.js';
 import { esc, toast, confirmDialog, ICON } from './ui.js';
 import { openLibrarySheet } from './libraries.js';
+import { renderImport } from './import.js';
 
 const app = document.getElementById('app');
 let store;
@@ -134,14 +135,14 @@ async function renderHome() {
                <h2>Matsedeln är tom</h2>
                <p>Lägg till din första maträtt – en bild och några ingredienser räcker.</p>
                <a href="#/ny" class="btn btn--primary">+ Lägg till maträtt</a>
+               <a href="#/importera" class="link">eller importera från ChatGPT</a>
              </div>`
       }
     </main>
-    ${
-      user?.email
-        ? `<footer class="wrap foot">Inloggad som ${esc(user.email)} · <button type="button" class="link" data-signout>Logga ut</button></footer>`
-        : ''
-    }
+    <footer class="wrap foot">
+      <a href="#/importera" class="link">Importera maträtter</a>
+      ${user?.email ? `<br>Inloggad som ${esc(user.email)} · <button type="button" class="link" data-signout>Logga ut</button>` : ''}
+    </footer>
     <a href="#/ny" class="fab" aria-label="Lägg till maträtt">+ Lägg till maträtt</a>`;
 
   app.querySelector('[data-signout]')?.addEventListener('click', () => store.signOut());
@@ -626,6 +627,7 @@ async function route() {
     else if (page === 'maltid' && id) await renderDetail(id);
     else if (page === 'ny') await renderForm(null);
     else if (page === 'redigera' && id) await renderForm(id);
+    else if (page === 'importera') await renderImport({ app, store, categories });
     else renderNotFound();
   } catch (e) {
     console.error(e);
