@@ -232,7 +232,7 @@ export async function renderImport({ app, store, categories }) {
   async function setImage(i, file) {
     if (!file?.type.startsWith('image/') || !parsed[i]) return;
     try {
-      const blob = await resizeImage(file, store.mode === 'local' ? 1200 : 1800);
+      const blob = await resizeImage(file, store.mode === 'local' ? 1200 : 1600);
       const key = fold(parsed[i].name);
       if (images.get(key)) URL.revokeObjectURL(images.get(key).url);
       images.set(key, { blob, url: URL.createObjectURL(blob) });

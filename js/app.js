@@ -357,7 +357,7 @@ async function renderForm(id) {
   async function useFile(file) {
     if (!file || !file.type.startsWith('image/')) return;
     try {
-      const blob = await resizeImage(file, store.mode === 'local' ? 1200 : 1800);
+      const blob = await resizeImage(file, store.mode === 'local' ? 1200 : 1600);
       draft.imageBlob = blob;
       draft.removeImage = false;
       if (draft.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(draft.previewUrl);

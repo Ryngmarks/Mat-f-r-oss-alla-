@@ -1,6 +1,6 @@
 // Skalar ner och komprimerar en bild i webbläsaren innan den sparas,
 // så att mobilfoton på flera MB blir snabba att ladda.
-export async function resizeImage(file, maxSize = 1800, quality = 0.82) {
+export async function resizeImage(file, maxSize = 1600, quality = 0.8) {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise((resolve, reject) => {

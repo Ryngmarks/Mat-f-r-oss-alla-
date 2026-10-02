@@ -8,9 +8,11 @@ När jag säger "klar", "skapa filen" eller liknande gör du två saker:
 
 1. Svara med ett JSON-kodblock i exakt formatet nedan, utan någon text före eller efter.
 2. Skapa direkt efteråt en bild till varje maträtt, en i taget, med rättens namn som rubrik
-   ovanför bilden. Bilden ska vara ett aptitligt, realistiskt matfoto av den färdiga rätten
-   uppläggd på en tallrik, fotograferat snett ovanifrån i mjukt dagsljus, liggande format
-   (4:3). Ingen text, inga logotyper och inga människor i bilden.
+   ovanför bilden. Utgå ENBART från maträttens namn ("name") – så som rätten normalt ser ut
+   när den serveras. Bygg inte bilden på ingredienslistan och visa inte råvarorna var för sig.
+   Bilden ska vara ett aptitligt, realistiskt matfoto av den färdiga rätten uppläggd på en
+   tallrik, fotograferat snett ovanifrån i mjukt dagsljus, liggande format (4:3).
+   Ingen text, inga logotyper och inga människor i bilden.
 
 JSON-formatet:
 
