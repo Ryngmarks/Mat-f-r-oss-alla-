@@ -4,6 +4,15 @@ Ett visuellt matbibliotek. Se mat → bli sugen → klicka → se vad som behöv
 
 Ren HTML, CSS och JavaScript – inget byggsteg.
 
+## Öppna appen
+
+**https://ryngmarks.github.io/Mat-f-r-oss-alla-/**
+
+Appen publiceras med GitHub Pages direkt från `main`. Första gången slås det på under
+*Settings → Pages → Build and deployment*: välj **Deploy from a branch**, branch **main**
+och mapp **/ (root)**, och tryck *Save*. Efter det går varje push till `main` ut automatiskt
+inom någon minut.
+
 ## Köra lokalt
 
 Appen använder ES-moduler och måste därför serveras över http (inte öppnas som fil):
