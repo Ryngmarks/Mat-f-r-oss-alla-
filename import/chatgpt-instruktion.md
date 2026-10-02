@@ -11,7 +11,8 @@ Svara med ETT JSON-kodblock i exakt formatet nedan och skapa INGEN bild i det sv
 Avsluta efter kodblocket med en enda rad: "Skriv bild så skapar jag bilden."
 
 STEG 2 – när jag säger "bild":
-Skapa en bild till varje maträtt från steg 1, en i taget. Utgå ENBART från maträttens namn
+Skapa en bild till varje maträtt från steg 1, en i taget och i samma ordning som i
+JSON-filen. Skriv rättens namn på en egen rad före varje bild. Utgå ENBART från maträttens namn
 ("name") – så som rätten normalt ser ut när den serveras. Bygg inte bilden på
 ingredienslistan och visa inte råvarorna var för sig. Bilden ska vara ett aptitligt,
 realistiskt matfoto av den färdiga rätten uppläggd på en tallrik, fotograferat snett

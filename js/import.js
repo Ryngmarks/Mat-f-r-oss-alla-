@@ -287,7 +287,9 @@ export async function renderImport({ app, store, categories }) {
 
       <section class="field" data-preview hidden>
         <span class="label"><span class="num">3</span>Välj rätter och lägg till bilder</span>
-        <p class="muted import__help">Spara bilderna från ChatGPT och tryck på kameran vid varje rätt. På datorn kan du också kopiera en bild och klistra in den här.</p>
+        <p class="muted import__help">Spara bilderna från ChatGPT och välj alla på en gång – de kopplas till rätterna i samma ordning som du sparade dem. Stämmer något inte trycker du på bilden vid rätten och byter. På datorn kan du också kopiera en bild och klistra in den här.</p>
+        <label class="btn btn--soft import__all" for="import-imgs">Välj alla bilder på en gång</label>
+        <input type="file" id="import-imgs" accept="image/*" multiple class="sr-only">
         <ul class="import__list" data-list></ul>
       </section>
 
@@ -370,7 +372,7 @@ export async function renderImport({ app, store, categories }) {
     read(input.value);
   });
 
-  async function setImage(i, file) {
+  async function setImage(i, file, redraw = true) {
     if (!file?.type.startsWith('image/') || !parsed[i]) return;
     try {
       const blob = await resizeImage(file, store.mode === 'local' ? 1200 : 1600);
@@ -379,11 +381,50 @@ export async function renderImport({ app, store, categories }) {
       images.set(key, { blob, url: URL.createObjectURL(blob) });
       const box = list.querySelector(`input[type=checkbox][value="${i}"]`);
       if (box) box.checked = true;
-      draw();
+      if (redraw) draw();
     } catch {
       toast('Bilden gick inte att läsa. Prova en annan.');
     }
   }
+
+  // Flera bilder på en gång: filnamn som innehåller rättens namn kopplas dit, resten
+  // fördelas i den ordning de sparades (äldst först) på rätterna som saknar bild.
+  async function assignFiles(fileList) {
+    const files = [...fileList].filter((f) => f.type.startsWith('image/'));
+    if (!files.length || !parsed.length) return;
+    const taken = new Set();
+    const plan = [];
+    const rest = [];
+    for (const f of files) {
+      const fname = fold(f.name.replace(/\.[^.]+$/, '')).replace(/[_\-.]+/g, ' ');
+      const i = parsed.findIndex((m, k) => !taken.has(k) && fname.includes(fold(m.name)));
+      if (i >= 0) {
+        taken.add(i);
+        plan.push([i, f]);
+      } else rest.push(f);
+    }
+    rest.sort((a, b) => a.lastModified - b.lastModified);
+    const free = parsed.map((_, k) => k).filter((k) => !taken.has(k) && !images.has(fold(parsed[k].name)));
+    rest.forEach((f, n) => {
+      if (free[n] !== undefined) plan.push([free[n], f]);
+    });
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Förbereder bilder…';
+    for (const [i, f] of plan) await setImage(i, f, false);
+    draw();
+    const extra = files.length - plan.length;
+    toast(
+      `${plan.length === 1 ? '1 bild kopplad' : `${plan.length} bilder kopplade`}${
+        extra > 0 ? ` – ${extra} blev över` : ''
+      }. Kontrollera att de hamnat rätt.`
+    );
+  }
+
+  $('#import-imgs').addEventListener('change', (e) => {
+    assignFiles(e.target.files);
+    e.target.value = '';
+  });
 
   list.addEventListener('change', (e) => {
     if (e.target.matches('[data-img]')) setImage(+e.target.dataset.img, e.target.files[0]);
@@ -392,11 +433,12 @@ export async function renderImport({ app, store, categories }) {
 
   // Kopiera en bild i ChatGPT och klistra in här – den hamnar på första rätten utan bild.
   app.addEventListener('paste', (e) => {
-    const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
-    if (!file || !parsed.length) return;
+    const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith('image/'));
+    if (!files.length || !parsed.length) return;
     e.preventDefault();
+    if (files.length > 1) return assignFiles(files);
     const i = parsed.findIndex((m) => !images.has(fold(m.name)));
-    setImage(i >= 0 ? i : 0, file);
+    setImage(i >= 0 ? i : 0, files[0]);
   });
 
   $('[data-copy]').addEventListener('click', async (e) => {

@@ -78,8 +78,13 @@ Man kan prata in maträtter i ChatGPT och importera dem i stället för att skri
    en matbild per rätt utifrån rättens namn.
 3. Kopiera svaret och klistra in det på importsidan, eller spara det som en `.json`-fil och
    välj filen.
-4. Spara bilderna från ChatGPT och tryck på kameran vid respektive rätt (på datorn går det
-   också att kopiera bilden och klistra in den). Bocka i rätterna och tryck **Importera**.
+4. Spara bilderna från ChatGPT i samma ordning som rätterna och tryck **Välj alla bilder på en
+   gång**. Bilder vars filnamn innehåller rättens namn kopplas dit; resten fördelas i den
+   ordning de sparades. Tryck på en bild vid en rätt för att byta. Bocka i rätterna och tryck
+   **Importera**.
+
+En fil kan innehålla hur många rätter som helst – säg flera rätter till ChatGPT innan du säger
+”klar”.
 
 Formatet (se [`import/exempel.json`](import/exempel.json)):
 
