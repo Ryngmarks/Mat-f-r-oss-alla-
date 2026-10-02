@@ -65,7 +65,8 @@ Man kan prata in maträtter i ChatGPT och importera dem i stället för att skri
 1. Startsidan → **Importera maträtter** → **Kopiera instruktion till ChatGPT**
    (texten finns också i [`import/chatgpt-instruktion.md`](import/chatgpt-instruktion.md)).
 2. Klistra in den i en ny chatt och berätta om maträtterna – skriv eller använd röstläget.
-   Säg **”klar”** så svarar ChatGPT med ett JSON-kodblock och skapar en matbild per rätt.
+   Säg **”klar”** så svarar ChatGPT med ett JSON-kodblock. Skriv sedan **”bild”** så skapas
+   en matbild per rätt utifrån rättens namn.
 3. Kopiera svaret och klistra in det på importsidan, eller spara det som en `.json`-fil och
    välj filen.
 4. Spara bilderna från ChatGPT och tryck på kameran vid respektive rätt (på datorn går det
@@ -88,7 +89,9 @@ Formatet (se [`import/exempel.json`](import/exempel.json)):
 }
 ```
 
-Bara `name` krävs. Kategorier matchas på namn mot matsedelns kategorier; okända hamnar i
+Bara `name` krävs. Får man ingen JSON går det också att klistra in vanlig text – ett namn,
+`Ingredienser:` med punktlista och eventuellt `Gör så här:` med steg. Saknas kategori gissas
+den utifrån ingrediensens namn (köttfärs → Protein, ris → Kolhydrater osv.). Kategorier matchas på namn mot matsedelns kategorier; okända hamnar i
 Övrigt. Rätter som redan finns med samma namn är urbockade från början. Bilderna ligger inte i
 filen utan väljs per rätt på importsidan.
 

@@ -1,6 +1,7 @@
 // Import av maträtter, t.ex. från ChatGPT. Formatet beskrivs i import/chatgpt-instruktion.md.
-// Läsningen är förlåtande: kodblock runt texten, svenska fältnamn, steg som text
-// eller lista och okända kategorier hanteras.
+// Läsningen är förlåtande: JSON (även med kodblock och svenska fältnamn) läses i första hand,
+// annars vanlig text med namn, "Ingredienser:" och "Gör så här:". Saknas kategori gissas den
+// utifrån ingrediensens namn.
 
 import { esc, toast, ICON } from './ui.js';
 import { resizeImage } from './image.js';
@@ -20,33 +21,159 @@ const ALIASES = {
   kott: 'protein', fisk: 'protein', kyckling: 'protein', proteiner: 'protein',
   kolhydrat: 'kolhydrater', pasta: 'kolhydrater',
   gronsak: 'gronsaker', gront: 'gronsaker',
-  sas: 'sas', saser: 'sas', dressing: 'sas',
-  ovrigt: 'ovrigt', annat: 'ovrigt', kryddor: 'ovrigt', krydda: 'ovrigt',
+  sas: 'sas', saser: 'sas', dressing: 'sas', saser_och_dressing: 'sas',
+  ovrigt: 'ovrigt', annat: 'ovrigt', kryddor: 'ovrigt', krydda: 'ovrigt', tillbehor: 'ovrigt',
 };
 
-export function parseImport(raw, categories) {
-  const t = String(raw || '');
-  const start = t.search(/[[{]/);
-  const end = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
-  if (start < 0 || end < start) throw new Error('Hittade inga maträtter. Klistra in hela svaret från ChatGPT.');
+// Gissar kategori från ingrediensens namn när ingen kategori anges.
+const GUESS = [
+  ['sas', /sås|dressing|salsa|ketchup|majonn|aioli|pesto|buljong|fond|grädd|crème|creme|kokosmjölk|krossade tomater|passerade tomater|tomatpuré|sambal|soja|chutney|tzatziki|guacamole/],
+  ['protein', /kött|färs|kyckling|fläsk|bacon|korv|skinka|kalkon|biff|entrecote|oxfilé|lamm|hamburgare|burgare|fisk|lax|torsk|sej|tonfisk|räk|musslor|ägg|tofu|halloumi|quorn|bönor|linser|kikärt/],
+  ['kolhydrater', /ris|pasta|spagetti|spaghetti|makaron|penne|tagliatelle|lasagneplatt|nudlar|bröd|tortilla|pita|wrap|potatis|pommes|couscous|bulgur|quinoa|gnocchi|mjöl(?!k)|polenta|tacoskal|naan/],
+  ['gronsaker', /sallad|tomat|lök|gurka|paprika|morot|broccoli|blomkål|spenat|vitlök|svamp|champinjon|majs|ärtor|avokado|zucchini|squash|kål|selleri|aubergine|rädis|ruccola|chili|ingefära|bladpersilja|koriander|purjo|sparris|bönor gröna|haricots/],
+];
 
-  let data;
-  try {
-    data = JSON.parse(t.slice(start, end + 1));
-  } catch {
-    throw new Error('Texten gick inte att läsa. Kontrollera att hela kodblocket kom med.');
-  }
-
-  const list = Array.isArray(data) ? data : Array.isArray(pick(data, 'meals', 'maträtter', 'matratter')) ? pick(data, 'meals', 'maträtter', 'matratter') : [data];
-
+function categoryResolver(categories) {
   const byName = new Map(categories.map((c) => [fold(c.name), c.id]));
   const fallback = byName.get('ovrigt') ?? categories.at(-1)?.id;
-  const categoryId = (name) => {
-    const f = fold(name);
-    return byName.get(f) ?? byName.get(ALIASES[f]) ?? fallback;
+  const fromLabel = (label) => {
+    const f = fold(label).replace(/\s+/g, '_');
+    return byName.get(f) ?? byName.get(ALIASES[f]) ?? null;
   };
+  const guess = (name) => {
+    const n = String(name).toLocaleLowerCase('sv');
+    const hit = GUESS.find(([, re]) => re.test(n));
+    return (hit && byName.get(hit[0])) ?? fallback;
+  };
+  return { fromLabel, guess, resolve: (label, name) => (label && fromLabel(label)) || guess(name) };
+}
 
-  const meals = list
+const UNIT = '(g|gram|kg|hg|st|styck|dl|cl|ml|l|liter|msk|tsk|krm|burk|burkar|paket|förp|påse|påsar|klyfta|klyftor|knippe|skivor|skiva|nypa)';
+const NUM = '(\\d+(?:[.,]\\d+)?(?:\\s*[-–]\\s*\\d+)?|½|¼|¾|\\d+\\/\\d+|en|ett|två|tre|fyra|fem)';
+
+// "500 g köttfärs", "Köttfärs – 500 g", "Köttfärs (500 g)", "Köttfärs: 500 g", "Köttfärs".
+function parseIngredientLine(line) {
+  let m = line.match(new RegExp(`^${NUM}\\s*${UNIT}?\\.?\\s+(.+)$`, 'i'));
+  if (m) return { amount: m[1], unit: m[2] || '', name: m[3] };
+  m = line.match(new RegExp(`^(.+?)\\s*[(:–-]\\s*${NUM}\\s*${UNIT}?\\)?\\.?$`, 'i'));
+  if (m) return { name: m[1], amount: m[2], unit: m[3] || '' };
+  m = line.match(new RegExp(`^(.+?)\\s+(\\d+(?:[.,]\\d+)?|½|¼|¾)\\s*${UNIT}\\.?$`, 'i'));
+  if (m) return { name: m[1], amount: m[2], unit: m[3] };
+  return { name: line, amount: '', unit: '' };
+}
+
+const cleanLine = (l) =>
+  l
+    .replace(/\*\*|__|`/g, '')
+    .replace(/^#+\s*/, '')
+    .trim();
+const BULLET = /^\s*(?:[-•*–·]|\d+[.)])\s+/;
+const SECTION = {
+  ingredients: /^(ingredienser|du behöver|det här behöver du|handla)\b/i,
+  steps: /^(gör så här|så lagar du|så gör du|tillagning|instruktioner|steg för steg|steg|gör så)\b/i,
+  description: /^(beskrivning)\b/i,
+};
+const sectionOf = (l) => Object.keys(SECTION).find((k) => SECTION[k].test(l.replace(/:.*$/, '').trim()));
+
+function tidyMealName(l) {
+  const n = cleanLine(l)
+    .replace(/^(då har vi|här är|maträtt|namn|rätt)\s*:?\s*/i, '')
+    .replace(/[.:!]+$/, '')
+    .trim();
+  return n ? n[0].toLocaleUpperCase('sv') + n.slice(1) : '';
+}
+
+// Inledande pratfraser från ChatGPT som inte är ett namn.
+const CHATTER = /^(här (kommer|är)|absolut|självklart|toppen|perfekt|okej|ok|bra|smaklig)\b|[!?:]$/i;
+
+// Läser vanlig text: ett namn, sedan "Ingredienser:" med punkter och ev. "Gör så här:" med steg.
+function parseText(raw, cats) {
+  const rawLines = raw.split(/\r?\n/);
+  const lines = rawLines.map(cleanLine);
+  const isTitle = (i) => /^\s*(#+\s|\*\*[^*]+\*\*:?\s*$)/.test(rawLines[i]) && !sectionOf(lines[i]);
+  const isCandidate = (i) => lines[i] && !BULLET.test(lines[i]) && !sectionOf(lines[i]);
+  const headers = lines.map((l, i) => (sectionOf(l) === 'ingredients' ? i : -1)).filter((i) => i >= 0);
+  if (!headers.length) return [];
+
+  // Hitta namnraden för varje rätt.
+  const names = headers.map((h, hi) => {
+    const prev = hi ? headers[hi - 1] : -1;
+    for (let i = h - 1; i > prev; i--) if (isTitle(i)) return i; // markdown-rubrik vinner
+    let floor = prev;
+    for (let i = h - 1; i > prev; i--) {
+      if (!isCandidate(i) && lines[i]) {
+        floor = i;
+        break;
+      }
+    }
+    for (let i = floor + 1; i < h; i++) if (isCandidate(i) && (!CHATTER.test(lines[i]) || isTitle(i))) return i;
+    return -1;
+  });
+
+  return headers
+    .map((h, hi) => {
+      const nameAt = names[hi];
+      const end = hi + 1 < headers.length ? (names[hi + 1] >= 0 ? names[hi + 1] : headers[hi + 1]) : lines.length;
+      const meal = { name: nameAt >= 0 ? tidyMealName(lines[nameAt]) : '', description: '', ingredients: [], steps: [] };
+      if (nameAt >= 0) meal.description = lines.slice(nameAt + 1, h).filter((l, k) => l && isCandidate(nameAt + 1 + k)).join(' ');
+
+      let mode = 'ingredients';
+      let catLabel = null;
+      for (let i = h; i < end; i++) {
+        const l = lines[i];
+        if (!l) continue;
+        const sec = sectionOf(l);
+        if (sec) {
+          mode = sec;
+          const rest = l.split(':').slice(1).join(':').trim();
+          if (rest && mode === 'description') meal.description = rest;
+          continue;
+        }
+        const item = l.replace(BULLET, '').trim();
+        if (mode === 'ingredients') {
+          // "Protein:" som underrubrik sätter kategori för punkterna under.
+          if (!BULLET.test(l) && /:$/.test(l) && cats.fromLabel(l.slice(0, -1))) {
+            catLabel = l.slice(0, -1);
+            continue;
+          }
+          if (!BULLET.test(l) && (CHATTER.test(l) || l.split(' ').length > 6)) continue; // löptext
+          const ing = parseIngredientLine(item);
+          meal.ingredients.push({ ...ing, category_id: cats.resolve(catLabel, ing.name) });
+        } else if (mode === 'steps') {
+          if (!BULLET.test(l) && CHATTER.test(l)) continue;
+          meal.steps.push(item);
+        } else if (mode === 'description') {
+          meal.description = [meal.description, item].filter(Boolean).join(' ');
+        }
+      }
+      return meal;
+    })
+    .map((m) => ({
+      name: m.name,
+      description: m.description,
+      instructions: m.steps.join('\n'),
+      ingredients: m.ingredients.map((i) => ({ ...i, name: tidyMealName(i.name) })).filter((i) => i.name),
+    }));
+}
+
+function parseJson(raw, cats) {
+  const start = raw.search(/[[{]/);
+  const end = Math.max(raw.lastIndexOf('}'), raw.lastIndexOf(']'));
+  if (start < 0 || end < start) return null;
+  let data;
+  try {
+    data = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+
+  const list = Array.isArray(data)
+    ? data
+    : Array.isArray(pick(data, 'meals', 'maträtter', 'matratter'))
+      ? pick(data, 'meals', 'maträtter', 'matratter')
+      : [data];
+
+  return list
     .filter((m) => m && typeof m === 'object')
     .map((m) => {
       const rawSteps = pick(m, 'instructions', 'instruktioner', 'steps', 'steg') ?? [];
@@ -56,16 +183,19 @@ export function parseImport(raw, categories) {
 
       const rawIngs = pick(m, 'ingredients', 'ingredienser') ?? [];
       const ingredients = (Array.isArray(rawIngs) ? rawIngs : [])
-        .map((i) =>
-          typeof i === 'string'
-            ? { name: text(i), category_id: fallback, amount: '', unit: '' }
-            : {
-                name: text(pick(i, 'name', 'namn')),
-                category_id: categoryId(pick(i, 'category', 'kategori')),
-                amount: text(pick(i, 'amount', 'mängd', 'mangd')),
-                unit: text(pick(i, 'unit', 'enhet')),
-              }
-        )
+        .map((i) => {
+          if (typeof i === 'string') {
+            const ing = parseIngredientLine(text(i));
+            return { ...ing, category_id: cats.guess(ing.name) };
+          }
+          const name = text(pick(i, 'name', 'namn'));
+          return {
+            name,
+            category_id: cats.resolve(pick(i, 'category', 'kategori'), name),
+            amount: text(pick(i, 'amount', 'mängd', 'mangd')),
+            unit: text(pick(i, 'unit', 'enhet')),
+          };
+        })
         .filter((i) => i.name);
 
       return {
@@ -74,10 +204,19 @@ export function parseImport(raw, categories) {
         instructions: steps.join('\n'),
         ingredients,
       };
-    })
-    .filter((m) => m.name);
+    });
+}
 
-  if (!meals.length) throw new Error('Hittade inga maträtter med namn i texten.');
+export function parseImport(raw, categories) {
+  const t = String(raw || '');
+  const cats = categoryResolver(categories);
+  const fromJson = parseJson(t, cats);
+  const meals = (fromJson?.some((m) => m.name) ? fromJson : parseText(t, cats)).filter((m) => m.name);
+  if (!meals.length) {
+    throw new Error(
+      'Hittade inga maträtter. Klistra in hela svaret från ChatGPT – antingen JSON-koden eller en text med namn och "Ingredienser:".'
+    );
+  }
   return meals;
 }
 
@@ -128,7 +267,9 @@ export async function renderImport({ app, store, categories }) {
         <p class="muted import__help">
           Kopiera instruktionen och klistra in den i en ny chatt i ChatGPT. Berätta sedan om
           maträtterna – skriv eller använd röstläget. Säg <strong>”klar”</strong> när du är färdig,
-          så svarar ChatGPT med en fil i rätt format och skapar en bild till varje rätt.
+          så svarar ChatGPT med en fil i rätt format. Skriv sedan <strong>”bild”</strong> så skapas
+          en bild till varje rätt. Det går också bra att klistra in en vanlig text med namn och
+          ingredienser.
         </p>
         <button type="button" class="btn btn--soft" data-copy>Kopiera instruktion till ChatGPT</button>
       </section>
