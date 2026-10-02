@@ -13,7 +13,7 @@
 
 -- Rensa ----------------------------------------------------------
 
-drop table if exists shopping_item, pantry_item, shopping_list, plan_entry, meal_ingredient, meal, ingredient, category,
+drop table if exists item_section, shopping_item, pantry_item, shopping_list, store, plan_entry, meal_ingredient, meal, ingredient, category,
   library_invite, library_member, library cascade;
 
 -- Tabeller -------------------------------------------------------
@@ -405,3 +405,40 @@ begin
     alter publication supabase_realtime add table shopping_item;
   end if;
 end $$;
+
+-- ===== Butiker (samma som 04_butiker.sql) =====
+
+create table if not exists store (
+  id             uuid primary key default gen_random_uuid(),
+  name           text not null,
+  created_by     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  section_order  text[] not null default '{}',
+  hidden         text[] not null default '{}',
+  created_at     timestamptz not null default now()
+);
+
+create table if not exists item_section (
+  library_id  uuid not null references library(id) on delete cascade,
+  name        text not null,   -- gemener
+  section     text not null,
+  primary key (library_id, name)
+);
+
+alter table shopping_list add column if not exists store_id uuid references store(id) on delete set null;
+
+alter table store        enable row level security;
+alter table item_section enable row level security;
+
+drop policy if exists "alla ser butiker"         on store;
+drop policy if exists "skapa egen butik"         on store;
+drop policy if exists "ändra egen butik"         on store;
+drop policy if exists "ta bort egen butik"       on store;
+drop policy if exists "medlem item_section"      on item_section;
+
+create policy "alla ser butiker"   on store for select to authenticated using (true);
+create policy "skapa egen butik"   on store for insert to authenticated with check (created_by = auth.uid());
+create policy "ändra egen butik"   on store for update to authenticated using (created_by = auth.uid()) with check (created_by = auth.uid());
+create policy "ta bort egen butik" on store for delete to authenticated using (created_by = auth.uid());
+
+create policy "medlem item_section" on item_section for all to authenticated
+  using (is_member(library_id)) with check (is_member(library_id));

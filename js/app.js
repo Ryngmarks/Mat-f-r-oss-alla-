@@ -730,7 +730,7 @@ async function route() {
     else if (page === 'importera') await renderImport({ app, store, categories });
     else if (page === 'valj') await renderSwipe({ app, store, media, tagline });
     else if (page === 'vecka') await renderPlanner({ app, store, mondayIso: id, categories });
-    else if (page === 'handla') await renderShopping({ app, store, categories, back: previousRoute.startsWith('/vecka') ? `#${previousRoute}` : '#/' });
+    else if (page === 'handla') await renderShopping({ app, store, categories, user, back: previousRoute.startsWith('/vecka') ? `#${previousRoute}` : '#/' });
     else renderNotFound();
   } catch (e) {
     console.error(e);

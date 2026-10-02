@@ -3,6 +3,7 @@
 
 import { esc, toast, confirmDialog, ICON } from './ui.js';
 import { guessCategoryKey } from './import.js';
+import { SECTIONS, sectionInfo, guessSection, storeOrder, learnFromCheck } from './sections.js';
 
 export const DEFAULT_PANTRY = ['salt', 'peppar', 'svartpeppar', 'vitpeppar', 'vatten', 'olja', 'olivolja', 'rapsolja', 'smör'];
 
@@ -140,15 +141,21 @@ export function stopShopping() {
   stopLive = null;
 }
 
-const HOME =
-  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 11l8-6 8 6v8a1 1 0 0 1-1 1h-4v-5h-6v5H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+const MORE =
+  '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></svg>';
+const UP =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DOWN =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const SHARE =
   '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-export async function renderShopping({ app, store, categories, back = '#/' }) {
+export async function renderShopping({ app, store, categories, user, back = '#/' }) {
   stopShopping();
   document.title = 'Inköpslista';
   let data;
+  let shops = [];
+  let placed = new Map();
   try {
     data = await store.getShopping();
   } catch (e) {
@@ -162,35 +169,44 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
       </main>`;
     return;
   }
+  // Butiker kräver 04_butiker.sql – utan den fungerar listan ändå, i standardordning.
+  let shopsReady = true;
+  try {
+    shops = await store.listShops();
+  } catch {
+    shopsReady = false;
+  }
+  placed = await store.getItemSections().catch(() => new Map());
 
-  const order = (name) => categories.find((c) => c.name === name)?.sort_order ?? 999;
+  const currentShop = () => shops.find((s) => s.id === data.store_id) ?? null;
+  const mine = (shop) => shop && (shop.created_by === user?.id || store.mode === 'local');
+  const sectionOf = (item) => placed.get(item.name.toLocaleLowerCase('sv')) ?? guessSection(item.name);
   const catOf = (name) => {
     const key = guessCategoryKey(name);
     return categories.find((c) => fold(c.name) === key)?.name ?? categories.find((c) => fold(c.name) === 'ovrigt')?.name ?? 'Övrigt';
   };
 
+  function groupItems(items) {
+    const order = storeOrder(currentShop());
+    const groups = new Map(order.map((k) => [k, []]));
+    for (const i of items) groups.get(sectionOf(i))?.push(i) ?? groups.get('ovrigt').push(i);
+    return [...groups.entries()]
+      .filter(([, list]) => list.length)
+      .map(([k, list]) => [k, list.sort((a, b) => a.checked - b.checked || a.name.localeCompare(b.name, 'sv'))]);
+  }
+
   function shareText(items) {
-    const groups = groupItems(items.filter((i) => !i.pantry && !i.checked));
+    const shop = currentShop();
     return [
-      `Inköpslista${data.label ? ` – ${data.label}` : ''}`,
-      ...groups.map(([cat, list]) => `\n${cat.toLocaleUpperCase('sv')}\n${list.map((i) => `☐ ${i.name}${i.amount ? ` ${i.amount}` : ''}`).join('\n')}`),
+      `Inköpslista${data.label ? ` – ${data.label}` : ''}${shop ? ` · ${shop.name}` : ''}`,
+      ...groupItems(items.filter((i) => !i.pantry && !i.checked)).map(
+        ([k, list]) =>
+          `\n${sectionInfo(k).name.toLocaleUpperCase('sv')}\n${list.map((i) => `☐ ${i.name}${i.amount ? ` ${i.amount}` : ''}`).join('\n')}`
+      ),
     ].join('\n');
   }
 
-  function groupItems(items) {
-    const groups = new Map();
-    for (const i of items) {
-      const c = i.category || 'Övrigt';
-      if (!groups.has(c)) groups.set(c, []);
-      groups.get(c).push(i);
-    }
-    return [...groups.entries()]
-      .sort((a, b) => order(a[0]) - order(b[0]))
-      .map(([c, list]) => [c, list.sort((a, b) => a.checked - b.checked || a.name.localeCompare(b.name, 'sv'))]);
-  }
-
-  function rowHtml(i) {
-    return `
+  const rowHtml = (i) => `
       <li class="shop-item${i.checked ? ' is-checked' : ''}">
         <label class="shop-item__main">
           <input type="checkbox" data-check="${i.id}" ${i.checked ? 'checked' : ''}>
@@ -199,13 +215,8 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
             ${i.sources ? `<small class="muted">${esc(i.sources)}</small>` : i.manual ? '<small class="muted">Eget</small>' : ''}
           </span>
         </label>
-        ${
-          i.manual
-            ? `<button type="button" class="ing__remove" data-delete="${i.id}" aria-label="Ta bort ${esc(i.name)}">${ICON.x}</button>`
-            : `<button type="button" class="ing__remove" data-pantry="${i.id}" title="Har oftast hemma" aria-label="Markera ${esc(i.name)} som basvara">${HOME}</button>`
-        }
+        <button type="button" class="ing__remove" data-more="${i.id}" aria-label="Mer för ${esc(i.name)}">${MORE}</button>
       </li>`;
-  }
 
   function draw() {
     const items = data.items;
@@ -213,6 +224,7 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
     const pantry = items.filter((i) => i.pantry);
     const left = list.filter((i) => !i.checked).length;
     const checked = list.filter((i) => i.checked).length;
+    const shop = currentShop();
 
     app.innerHTML = `
       <header class="top top--form">
@@ -223,11 +235,21 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
         </div>
       </header>
       <main class="wrap narrow shop">
-        <p class="shop__meta muted">${
-          items.length
-            ? `${data.label ? `${esc(data.label)} · ` : ''}${left ? `<strong>${left} kvar</strong>` : 'Allt är handlat 🎉'}`
-            : 'Listan är tom'
-        }</p>
+        <div class="shop__bar">
+          ${
+            shopsReady
+              ? `<button type="button" class="shop-picker" data-shops>
+                   <span aria-hidden="true">🏪</span>
+                   <span>${shop ? esc(shop.name) : 'Välj butik'}</span>${ICON.chevron}
+                 </button>`
+              : ''
+          }
+          <span class="shop__meta muted">${
+            items.length
+              ? `${data.label ? `${esc(data.label)} · ` : ''}${left ? `<strong>${left} kvar</strong>` : 'Allt är handlat 🎉'}`
+              : 'Listan är tom'
+          }</span>
+        </div>
 
         <form class="inline shop__add" data-add>
           <input class="input" name="name" placeholder="Lägg till vara, t.ex. diskmedel" autocomplete="off" enterkeyhint="done" required>
@@ -238,9 +260,9 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
           list.length
             ? groupItems(list)
                 .map(
-                  ([cat, rows]) => `
+                  ([k, rows]) => `
             <section class="group shop-group">
-              <h3 class="group__name">${esc(cat)}</h3>
+              <h3 class="group__name">${sectionInfo(k).emoji} ${esc(sectionInfo(k).name)}</h3>
               <ul class="shop-list">${rows.map(rowHtml).join('')}</ul>
             </section>`
                 )
@@ -294,7 +316,7 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
   async function reload(force = false) {
     try {
       data = await store.getShopping();
-      if (!force && document.activeElement?.closest?.('[data-add]')) return;
+      if (!force && (document.activeElement?.closest?.('[data-add]') || sheet?.open)) return;
       draw();
     } catch {}
   }
@@ -308,6 +330,17 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
     }
   };
 
+  async function learn(item) {
+    const shop = currentShop();
+    const res = learnFromCheck(shop, sectionOf(item));
+    if (!res || !mine(shop)) return;
+    try {
+      await store.saveShop({ ...shop, section_order: res.order });
+      shop.section_order = res.order;
+      toast(`Lärde mig: ${sectionInfo(res.moved).name} kommer efter ${sectionInfo(res.after).name} på ${shop.name}`);
+    } catch {}
+  }
+
   function bind() {
     const $ = (s) => app.querySelector(s);
     const byId = (id) => data.items.find((i) => i.id === id);
@@ -317,22 +350,11 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
         const item = byId(c.dataset.check);
         item.checked = c.checked; // direkt känsla, sparas i bakgrunden
         c.closest('.shop-item').classList.toggle('is-checked', c.checked);
+        if (c.checked) learn(item);
         act(() => store.updateShoppingItem(item.id, { checked: c.checked }));
       })
     );
-    app.querySelectorAll('[data-delete]').forEach((b) =>
-      b.addEventListener('click', () => act(() => store.deleteShoppingItems([b.dataset.delete])))
-    );
-    app.querySelectorAll('[data-pantry]').forEach((b) =>
-      b.addEventListener('click', () => {
-        const item = byId(b.dataset.pantry);
-        act(async () => {
-          await store.setPantry(item.name, true);
-          await store.updateShoppingItem(item.id, { pantry: true });
-          toast(`${item.name} är nu en basvara`);
-        });
-      })
-    );
+    app.querySelectorAll('[data-more]').forEach((b) => b.addEventListener('click', () => openItemSheet(byId(b.dataset.more))));
     app.querySelectorAll('[data-need]').forEach((b) =>
       b.addEventListener('click', () => act(() => store.updateShoppingItem(b.dataset.need, { pantry: false })))
     );
@@ -352,6 +374,7 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
       e.target.name.value = '';
       act(() => store.addShoppingItem({ name, category: catOf(name) })).then(() => app.querySelector('[data-add] input')?.focus());
     });
+    $('[data-shops]')?.addEventListener('click', openShopsSheet);
     $('[data-clear-checked]')?.addEventListener('click', () =>
       act(() => store.deleteShoppingItems(data.items.filter((i) => i.checked && !i.pantry).map((i) => i.id)))
     );
@@ -373,6 +396,225 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
     });
   }
 
+  /* Panel: en vara (flytta avdelning, basvara, ta bort) */
+
+  let sheet;
+  function openSheet(html, onBind) {
+    if (!sheet) {
+      sheet = document.createElement('dialog');
+      sheet.className = 'sheet';
+      document.body.append(sheet);
+      sheet.addEventListener('click', (e) => {
+        if (e.target === sheet) sheet.close();
+      });
+      sheet.addEventListener('close', () => draw());
+    }
+    sheet.innerHTML = `<div class="sheet__body">${html}</div>`;
+    sheet.querySelector('[data-close]')?.addEventListener('click', () => sheet.close());
+    onBind(sheet);
+    if (!sheet.open) sheet.showModal();
+  }
+
+  const head = (title) => `
+    <div class="sheet__head">
+      <h2 class="sheet__title">${title}</h2>
+      <button type="button" class="round round--plain" data-close aria-label="Stäng">${ICON.x}</button>
+    </div>`;
+
+  function openItemSheet(item) {
+    const current = sectionOf(item);
+    openSheet(
+      `${head(esc(item.name))}
+       <p class="muted sheet__note">Var ligger den i butiken? Valet sparas och gäller i alla butiker.</p>
+       <div class="section-grid">
+         ${SECTIONS.map(
+           (s) => `<button type="button" class="section-btn${s.key === current ? ' is-on' : ''}" data-section="${s.key}">
+             <span aria-hidden="true">${s.emoji}</span>${esc(s.name)}</button>`
+         ).join('')}
+       </div>
+       <div class="sheet__actions">
+         ${
+           item.manual
+             ? '<button type="button" class="btn btn--ghost danger-text" data-remove>Ta bort från listan</button>'
+             : '<button type="button" class="btn btn--ghost" data-make-pantry>🏠 Har oftast hemma (basvara)</button>'
+         }
+       </div>`,
+      (el) => {
+        el.querySelectorAll('[data-section]').forEach((b) =>
+          b.addEventListener('click', async () => {
+            try {
+              await store.setItemSection(item.name, b.dataset.section);
+              placed.set(item.name.toLocaleLowerCase('sv'), b.dataset.section);
+              sheet.close();
+            } catch (e) {
+              toast(`Kunde inte spara – har du kört 04_butiker.sql? (${e.message})`);
+            }
+          })
+        );
+        el.querySelector('[data-remove]')?.addEventListener('click', () => {
+          sheet.close();
+          act(() => store.deleteShoppingItems([item.id]));
+        });
+        el.querySelector('[data-make-pantry]')?.addEventListener('click', () => {
+          sheet.close();
+          act(async () => {
+            await store.setPantry(item.name, true);
+            await store.updateShoppingItem(item.id, { pantry: true });
+            toast(`${item.name} är nu en basvara`);
+          });
+        });
+      }
+    );
+  }
+
+  /* Panel: välj butik */
+
+  function openShopsSheet() {
+    const shop = currentShop();
+    let q = '';
+    const listHtml = () => {
+      const f = fold(q);
+      const rows = shops.filter((s) => !f || fold(s.name).includes(f));
+      return rows.length
+        ? rows
+            .map(
+              (s) => `
+          <li><button type="button" class="lib${s.id === data.store_id ? ' is-on' : ''}" data-pick-shop="${s.id}">
+            <span class="lib__text"><span class="lib__name">${esc(s.name)}</span>
+              <small>${mine(s) ? 'Din butik' : 'Upplagd av någon annan'}</small></span>
+            ${s.id === data.store_id ? `<span class="lib__check">${ICON.check}</span>` : ''}
+          </button></li>`
+            )
+            .join('')
+        : `<li class="muted">${shops.length ? 'Ingen butik matchar.' : 'Inga butiker upplagda än.'}</li>`;
+    };
+    openSheet(
+      `${head('Butik')}
+       <p class="muted sheet__note">Listan sorteras i den ordning du går i butiken.</p>
+       ${shops.length > 5 ? '<input type="search" class="input picker__search" placeholder="Sök butik" data-shop-search>' : ''}
+       <ul class="libs" data-shop-list>${listHtml()}</ul>
+       <div class="sheet__actions">
+         ${data.store_id ? '<button type="button" class="btn btn--ghost" data-no-shop>Ingen butik</button>' : ''}
+         ${shop && mine(shop) ? '<button type="button" class="btn btn--ghost" data-edit-shop>Ändra ordning</button>' : ''}
+         ${shop && !mine(shop) ? '<button type="button" class="btn btn--ghost" data-copy-shop>Gör en egen kopia</button>' : ''}
+         <button type="button" class="btn btn--primary" data-new-shop>+ Ny butik</button>
+       </div>`,
+      (el) => {
+        const bindList = () =>
+          el.querySelectorAll('[data-pick-shop]').forEach((b) =>
+            b.addEventListener('click', async () => {
+              try {
+                await store.setShoppingStore(b.dataset.pickShop);
+                data.store_id = b.dataset.pickShop;
+                sheet.close();
+              } catch (e) {
+                toast(e.message);
+              }
+            })
+          );
+        bindList();
+        el.querySelector('[data-shop-search]')?.addEventListener('input', (e) => {
+          q = e.target.value;
+          el.querySelector('[data-shop-list]').innerHTML = listHtml();
+          bindList();
+        });
+        el.querySelector('[data-no-shop]')?.addEventListener('click', async () => {
+          await store.setShoppingStore(null).catch(() => {});
+          data.store_id = null;
+          sheet.close();
+        });
+        el.querySelector('[data-edit-shop]')?.addEventListener('click', () => openShopEditor(shop));
+        el.querySelector('[data-copy-shop]')?.addEventListener('click', () =>
+          openShopEditor({ name: `${shop.name} (min)`, section_order: storeOrder(shop), hidden: shop.hidden ?? [] })
+        );
+        el.querySelector('[data-new-shop]').addEventListener('click', () => openShopEditor(null));
+      }
+    );
+  }
+
+  /* Panel: lägg upp eller ändra butik */
+
+  function openShopEditor(shop) {
+    let order = storeOrder(shop);
+    const hidden = new Set(shop?.hidden ?? []);
+    let name = shop?.name ?? '';
+
+    const draw = () =>
+      openSheet(
+        `${head(shop?.id ? 'Ändra butik' : 'Ny butik')}
+         <label class="label" for="shop-name">Namn</label>
+         <input id="shop-name" class="input" value="${esc(name)}" placeholder="t.ex. ICA Maxi Luleå" autocomplete="off">
+         <p class="muted sheet__note shop-editor__tip">Gå runt i butiken i tankarna från ingången och ordna avdelningarna i den
+           ordningen. Dölj det butiken inte har. Ordningen justeras också av sig själv när du bockar av i butiken.</p>
+         <ol class="shop-order">
+           ${order
+             .map(
+               (k, i) => `
+             <li class="${hidden.has(k) ? 'is-hidden' : ''}">
+               <span class="shop-order__num">${i + 1}</span>
+               <span class="shop-order__name"><span aria-hidden="true">${sectionInfo(k).emoji}</span> ${esc(sectionInfo(k).name)}</span>
+               <button type="button" class="ing__remove" data-up="${i}" aria-label="Flytta upp" ${i ? '' : 'disabled'}>${UP}</button>
+               <button type="button" class="ing__remove" data-down="${i}" aria-label="Flytta ned" ${i < order.length - 1 ? '' : 'disabled'}>${DOWN}</button>
+               <button type="button" class="link" data-hide="${k}">${hidden.has(k) ? 'Visa' : 'Dölj'}</button>
+             </li>`
+             )
+             .join('')}
+         </ol>
+         <div class="sheet__actions">
+           ${shop?.id ? '<button type="button" class="btn btn--ghost danger-text" data-delete-shop>Ta bort butiken</button>' : ''}
+           <button type="button" class="btn btn--primary" data-save-shop>Spara butik</button>
+         </div>`,
+        (el) => {
+          const nameEl = el.querySelector('#shop-name');
+          nameEl.addEventListener('input', () => (name = nameEl.value));
+          const move = (i, d) => {
+            const [k] = order.splice(i, 1);
+            order.splice(i + d, 0, k);
+            draw();
+          };
+          el.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => move(+b.dataset.up, -1)));
+          el.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', () => move(+b.dataset.down, 1)));
+          el.querySelectorAll('[data-hide]').forEach((b) =>
+            b.addEventListener('click', () => {
+              hidden.has(b.dataset.hide) ? hidden.delete(b.dataset.hide) : hidden.add(b.dataset.hide);
+              draw();
+            })
+          );
+          el.querySelector('[data-save-shop]').addEventListener('click', async () => {
+            if (!name.trim()) {
+              nameEl.focus();
+              return toast('Ge butiken ett namn');
+            }
+            // Dolda avdelningar läggs sist, så att varor där ändå hamnar någonstans.
+            const section_order = [...order.filter((k) => !hidden.has(k)), ...order.filter((k) => hidden.has(k))];
+            try {
+              const id = await store.saveShop({ id: shop?.id, name: name.trim(), section_order, hidden: [...hidden] });
+              shops = await store.listShops();
+              await store.setShoppingStore(id);
+              data.store_id = id;
+              toast(`${name.trim()} är sparad`);
+              sheet.close();
+            } catch (e) {
+              toast(`Kunde inte spara – har du kört 04_butiker.sql? (${e.message})`);
+            }
+          });
+          el.querySelector('[data-delete-shop]')?.addEventListener('click', async () => {
+            const ok = await confirmDialog({ title: `Ta bort ${shop.name}?`, text: 'Butiken försvinner för alla som använder den.' });
+            if (!ok) return;
+            try {
+              await store.deleteShop(shop.id);
+              shops = await store.listShops();
+              if (data.store_id === shop.id) data.store_id = null;
+              sheet.close();
+            } catch (e) {
+              toast(e.message);
+            }
+          });
+        }
+      );
+    draw();
+  }
+
   draw();
   window.scrollTo(0, 0);
 
@@ -385,5 +627,6 @@ export async function renderShopping({ app, store, categories, back = '#/' }) {
     unsub();
     document.removeEventListener('visibilitychange', onVisible);
     clearInterval(timer);
+    sheet?.remove();
   };
 }

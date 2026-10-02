@@ -180,6 +180,9 @@ class LocalStore {
     this.db.shopping ??= [];
     this.db.pantry ??= [];
     this.db.shoppingLabel ??= null;
+    this.db.stores ??= [];
+    this.db.itemSections ??= {};
+    this.db.shoppingStore ??= null;
   }
 
   #persist() {
@@ -301,7 +304,44 @@ class LocalStore {
   /* Inköpslista */
 
   async getShopping() {
-    return { label: this.db.shoppingLabel, items: [...this.db.shopping] };
+    return { label: this.db.shoppingLabel, store_id: this.db.shoppingStore, items: [...this.db.shopping] };
+  }
+
+  /* Butiker */
+
+  async listShops() {
+    return this.db.stores.map((s) => ({ ...s }));
+  }
+
+  async saveShop(shop) {
+    let row = this.db.stores.find((s) => s.id === shop.id);
+    if (row) Object.assign(row, shop);
+    else {
+      row = { created_by: 'local', hidden: [], ...shop, id: crypto.randomUUID() };
+      this.db.stores.push(row);
+    }
+    this.#persist();
+    return row.id;
+  }
+
+  async deleteShop(id) {
+    this.db.stores = this.db.stores.filter((s) => s.id !== id);
+    if (this.db.shoppingStore === id) this.db.shoppingStore = null;
+    this.#persist();
+  }
+
+  async setShoppingStore(id) {
+    this.db.shoppingStore = id;
+    this.#persist();
+  }
+
+  async getItemSections() {
+    return new Map(Object.entries(this.db.itemSections));
+  }
+
+  async setItemSection(name, section) {
+    this.db.itemSections[name.toLocaleLowerCase('sv')] = section;
+    this.#persist();
   }
 
   async listPantry() {
@@ -755,9 +795,55 @@ class SupabaseStore {
     const lib = this.#lib();
     const [items, meta] = await Promise.all([
       this.sb.from('shopping_item').select('*').eq('library_id', lib).order('position'),
-      this.sb.from('shopping_list').select('label').eq('library_id', lib).maybeSingle(),
+      this.sb.from('shopping_list').select('*').eq('library_id', lib).maybeSingle(),
     ]);
-    return { label: this.#check(meta)?.label ?? null, items: this.#check(items) };
+    const m = this.#check(meta);
+    return { label: m?.label ?? null, store_id: m?.store_id ?? null, items: this.#check(items) };
+  }
+
+  /* Butiker (gemensamma för alla, ändras bara av den som skapade dem) */
+
+  async listShops() {
+    const { data, error } = await this.sb.from('store').select('*').order('name');
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async saveShop(shop) {
+    const user = await this.getUser();
+    if (shop.id) {
+      const { id, name, section_order, hidden } = shop;
+      this.#check(await this.sb.from('store').update({ name, section_order, hidden }).eq('id', id));
+      return id;
+    }
+    const rows = this.#check(
+      await this.sb
+        .from('store')
+        .insert({ name: shop.name, section_order: shop.section_order, hidden: shop.hidden ?? [], created_by: user.id })
+        .select('id')
+    );
+    return rows[0].id;
+  }
+
+  async deleteShop(id) {
+    this.#check(await this.sb.from('store').delete().eq('id', id));
+  }
+
+  async setShoppingStore(id) {
+    this.#check(await this.sb.from('shopping_list').upsert({ library_id: this.#lib(), store_id: id }, { onConflict: 'library_id' }));
+  }
+
+  async getItemSections() {
+    const { data, error } = await this.sb.from('item_section').select('name, section').eq('library_id', this.#lib());
+    return new Map(error ? [] : data.map((r) => [r.name, r.section]));
+  }
+
+  async setItemSection(name, section) {
+    this.#check(
+      await this.sb
+        .from('item_section')
+        .upsert({ library_id: this.#lib(), name: name.toLocaleLowerCase('sv'), section }, { onConflict: 'library_id,name' })
+    );
   }
 
   async listPantry() {

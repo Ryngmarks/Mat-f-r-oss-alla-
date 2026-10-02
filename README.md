@@ -38,7 +38,8 @@ När Supabase ska kopplas på:
 
    Har du redan en databas igång? Kör i stället bara de nyare filerna, i nummerordning –
    de lägger till och raderar ingenting:
-   `supabase/02_forslagsbank_och_veckoplanering.sql`, `supabase/03_inkopslista.sql`
+   `supabase/02_forslagsbank_och_veckoplanering.sql`, `supabase/03_inkopslista.sql`,
+   `supabase/04_butiker.sql`
 3. Fyll i `SUPABASE_URL` och `SUPABASE_ANON_KEY` i `js/config.js`
    (finns under *Project Settings → API*).
 
@@ -103,14 +104,33 @@ matsedeln.
 - Samma vara från flera rätter slås ihop: vikt räknas om till g/kg, volym till ml/dl/l, övriga
   enheter (st, msk, burk …) summeras var för sig, t.ex. *Lök 3 st + 2 dl*. Under varje vara står
   vilka rätter den kommer från. Fritext i planen (t.ex. *Rester*) kommer inte med.
-- Varorna grupperas per kategori. Bocka av medan du handlar – det syns direkt hos alla i
+- Varorna grupperas per butiksavdelning (se *Butiker* nedan). Bocka av medan du handlar – det syns direkt hos alla i
   matsedeln (Supabase Realtime, plus en kontroll var 20:e sekund).
 - **Egna varor** (t.ex. diskmedel) läggs till överst och ligger kvar när listan uppdateras.
   Skapar man listan igen ersätts de framräknade varorna, men det som redan är avbockat förblir
   avbockat.
 - **Basvaror** (salt, peppar, olja, smör …) hamnar under *Har du hemma?*. Tryck *Behövs* för att
-  ta med en den här gången, eller på husikonen vid en vara för att göra den till basvara.
+  ta med en den här gången. Via **⋯** vid en vara gör man den till basvara.
 - Dela-knappen skickar listan som text (Anteckningar, sms, Messenger).
+
+## Butiker
+
+Högst upp i inköpslistan väljer man butik, och listan sorteras i den ordning man går där.
+
+- **Avdelningar** är fasta och samma i alla butiker: Frukt & grönt, Bröd, Kött & kyckling,
+  Chark & pålägg, Fisk & skaldjur, Ost, Mejeri & ägg, Kylt & färdigmat, Frys, Pasta, ris &
+  torrvaror, Konserver & såser, Kryddor & bakning, Godis & snacks, Dryck, Hushåll & hygien
+  och Övrigt (`js/sections.js`).
+- Varje vara placeras automatiskt utifrån namnet. Ligger den fel trycker man **⋯** och väljer
+  rätt avdelning – det sparas för matsedeln och gäller i alla butiker.
+- **En butik** är bara en ordning av avdelningarna. *+ Ny butik* → namnge (t.ex. *ICA Maxi
+  Luleå*) → flytta avdelningarna upp och ned i den ordning man går, och dölj det butiken saknar.
+- Butiker är **gemensamma för alla användare**, men bara den som lagt upp en butik kan ändra
+  den. Andra kan välja den eller göra *en egen kopia*.
+- **Appen lär sig ordningen.** När man bockar av en vara direkt efter en vara i en annan
+  avdelning räknas det som att den avdelningen kommer efter. Har samma ordning setts vid två
+  tillfällen men butiken säger tvärtom flyttas avdelningen – och appen säger till. Det gäller
+  butiker man själv lagt upp.
 
 ## Swipa fram middagen
 
@@ -171,7 +191,8 @@ css/styles.css      All design (mobile first, mörkt läge)
 js/app.js           Vyer och router: inloggning, startsida, detaljsida, skapa/redigera
 js/libraries.js     Panelen Matsedlar: byta, skapa, dela, godkänna inbjudningar
 js/planner.js       Veckoplanering och väljaren (egen matsedel / förslagsbank)
-js/shopping.js      Inköpslista: sammanslagning, basvaror, delad lista
+js/shopping.js      Inköpslista: sammanslagning, basvaror, butiker, delad lista
+js/sections.js      Butiksavdelningar, gissning av avdelning och inlärning av ordning
 js/swipe.js         Swipa fram middagen (ja/nej och resultatlista)
 js/import.js        Import av maträtter (t.ex. från ChatGPT)
 js/ui.js            Små delade hjälpare (escape, toast, dialog, ikoner)
@@ -182,6 +203,7 @@ import/             Instruktion till ChatGPT och exempelfil
 supabase/schema.sql Hela databasen från grunden (tabeller, funktioner, RLS, bildbucket)
 supabase/02_…sql    Tillägg för en befintlig databas: förslagsbank och veckoplanering
 supabase/03_…sql    Tillägg: inköpslista och basvaror
+supabase/04_…sql    Tillägg: butiker och var varor ligger
 ```
 
 ## Datamodell
@@ -196,7 +218,9 @@ supabase/03_…sql    Tillägg: inköpslista och basvaror
 - `plan_entry` – id, library_id, day, slot (`lunch`/`middag`), meal_id, text
 - `shopping_item` – id, library_id, name, amount, category, sources, checked, manual, pantry
 - `pantry_item` – library_id, name, active (basvaror)
-- `shopping_list` – library_id, label, updated_at
+- `shopping_list` – library_id, label, store_id, updated_at
+- `store` – id, name, created_by, section_order, hidden (gemensamma för alla)
+- `item_section` – library_id, name, section (var en vara ligger, när man flyttat den)
 
 Varje ny matsedel får standardkategorierna Protein, Kolhydrater, Grönsaker, Sås och Övrigt.
 Kategorierna ligger i tabellen `category` och kan ändras per matsedel.
