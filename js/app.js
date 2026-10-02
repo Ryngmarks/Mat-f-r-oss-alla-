@@ -3,6 +3,7 @@ import { resizeImage } from './image.js';
 import { esc, toast, confirmDialog, ICON } from './ui.js';
 import { openLibrarySheet } from './libraries.js';
 import { renderImport } from './import.js';
+import { renderSwipe } from './swipe.js';
 
 const app = document.getElementById('app');
 let store;
@@ -123,6 +124,14 @@ async function renderHome() {
       }
       <h1 class="home__title">Vad är du sugen på?</h1>
       ${
+        meals.length > 1
+          ? `<a href="#/valj" class="swipe-cta">
+               <span class="swipe-cta__icons" aria-hidden="true">😋</span>
+               <span><strong>Swipa fram middagen</strong><small>Ja eller nej – en rätt i taget</small></span>
+             </a>`
+          : ''
+      }
+      ${
         store.library.members > 1
           ? `<p class="home__shared">Delad matsedel · ${store.library.members} personer</p>`
           : ''
@@ -189,7 +198,7 @@ async function renderDetail(id) {
       <div class="hero">
         ${media(meal, 'hero__media')}
         <nav class="hero__bar">
-          <a href="#/" class="round" aria-label="Tillbaka">${ICON.back}</a>
+          <a href="${previousRoute.startsWith('/valj') ? '#/valj' : '#/'}" class="round" aria-label="Tillbaka">${ICON.back}</a>
           <span class="hero__actions">
             <a href="#/redigera/${meal.id}" class="round" aria-label="Redigera">${ICON.edit}</a>
             <button type="button" class="round" data-delete aria-label="Ta bort">${ICON.trash}</button>
@@ -614,11 +623,13 @@ function renderLogin() {
 /* ------------------------------------------------------------------ */
 
 let lastRoute = '';
+let previousRoute = '';
 
 async function route() {
   if (!user) return renderLogin();
   const hash = location.hash.replace(/^#/, '') || '/';
   if (lastRoute === '/') homeScroll = window.scrollY;
+  previousRoute = lastRoute;
   lastRoute = hash;
 
   const [, page, id] = hash.split('/');
@@ -628,6 +639,7 @@ async function route() {
     else if (page === 'ny') await renderForm(null);
     else if (page === 'redigera' && id) await renderForm(id);
     else if (page === 'importera') await renderImport({ app, store, categories });
+    else if (page === 'valj') await renderSwipe({ app, store, media, tagline });
     else renderNotFound();
   } catch (e) {
     console.error(e);

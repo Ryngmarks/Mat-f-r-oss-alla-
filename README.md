@@ -58,6 +58,15 @@ släpper bara fram matsedlar man är medlem i.
   Mottagaren ser inbjudan när hen loggar in och väljer *Godkänn* eller *Nej tack*.
 - **Ägaren** kan ta bort medlemmar och hela matsedeln. **Medlemmar** kan lämna.
 
+## Swipa fram middagen
+
+Vet man inte vad man vill äta trycker man på **Swipa fram middagen** på startsidan. Rätterna i
+matsedeln visas en i taget i slumpad ordning: **höger = ja**, **vänster = nej** (eller knapparna
+✕ och ♥, eller piltangenterna på datorn). ↺ ångrar senaste valet och ett tryck på kortet öppnar
+receptet. **Klar** – eller när rätterna tar slut – visar listan med det man sagt ja till, och
+därifrån öppnar man recepten. Urvalet sparas tills fliken stängs, så man kan gå fram och
+tillbaka mellan listan och recepten.
+
 ## Importera från ChatGPT
 
 Man kan prata in maträtter i ChatGPT och importera dem i stället för att skriva.
@@ -102,6 +111,7 @@ index.html          Skal, typsnitt, dialog
 css/styles.css      All design (mobile first, mörkt läge)
 js/app.js           Vyer och router: inloggning, startsida, detaljsida, skapa/redigera
 js/libraries.js     Panelen Matsedlar: byta, skapa, dela, godkänna inbjudningar
+js/swipe.js         Swipa fram middagen (ja/nej och resultatlista)
 js/import.js        Import av maträtter (t.ex. från ChatGPT)
 js/ui.js            Små delade hjälpare (escape, toast, dialog, ikoner)
 js/store.js         Datalager – LocalStore och SupabaseStore med samma gränssnitt
