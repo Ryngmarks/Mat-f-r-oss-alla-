@@ -39,8 +39,17 @@ När Supabase ska kopplas på:
 
 Datan i lokalt läge flyttas inte med automatiskt.
 
-> Appen har ingen inloggning ännu, så schemat ger anon-nyckeln läs- och skrivrätt.
-> Skärp policies i `schema.sql` innan appen delas publikt.
+## Användare
+
+Med Supabase måste man logga in. Alla inloggade delar samma matbibliotek.
+
+- **Skapa användare:** *Authentication → Users → Add user → Create new user*. Fyll i e-post
+  och lösenord och kryssa i **Auto Confirm User**. Ingen e-post skickas.
+- **Stäng av egen registrering:** *Authentication → Sign In / Providers* → slå av
+  **Allow new users to sign up**. Då kan bara de du skapat logga in.
+- **Byta lösenord:** öppna användaren i listan och sätt ett nytt.
+
+Har du redan kört en äldre `schema.sql`? Kör då `supabase/02_inloggning.sql` en gång.
 
 ## Struktur
 

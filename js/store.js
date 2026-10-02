@@ -142,6 +142,14 @@ function writeMeal(db, meal) {
 class LocalStore {
   mode = 'local';
 
+  // Lokalt läge har ingen inloggning.
+  async getUser() {
+    return { email: null };
+  }
+  onSignedOut() {}
+  async signIn() {}
+  async signOut() {}
+
   constructor() {
     try {
       this.db = JSON.parse(localStorage.getItem(KEY));
@@ -240,6 +248,30 @@ class SupabaseStore {
 
   constructor(client) {
     this.sb = client;
+  }
+
+  async getUser() {
+    const { data } = await this.sb.auth.getSession();
+    return data.session?.user ?? null;
+  }
+
+  onSignedOut(cb) {
+    this.sb.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') cb();
+    });
+  }
+
+  async signIn(email, password) {
+    const { error } = await this.sb.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) {
+      throw new Error(
+        /invalid login credentials/i.test(error.message) ? 'Fel e-post eller lösenord.' : error.message
+      );
+    }
+  }
+
+  async signOut() {
+    await this.sb.auth.signOut();
   }
 
   #check({ data, error }) {

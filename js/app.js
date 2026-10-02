@@ -5,6 +5,7 @@ const app = document.getElementById('app');
 let store;
 let categories = [];
 let homeScroll = 0;
+let user = null;
 
 /* ------------------------------------------------------------------ */
 /* Hjälpare                                                            */
@@ -139,8 +140,14 @@ async function renderHome() {
              </div>`
       }
     </main>
+    ${
+      user?.email
+        ? `<footer class="wrap foot">Inloggad som ${esc(user.email)} · <button type="button" class="link" data-signout>Logga ut</button></footer>`
+        : ''
+    }
     <a href="#/ny" class="fab" aria-label="Lägg till maträtt">+ Lägg till maträtt</a>`;
 
+  app.querySelector('[data-signout]')?.addEventListener('click', () => store.signOut());
   requestAnimationFrame(() => window.scrollTo(0, homeScroll));
 }
 
@@ -544,12 +551,63 @@ function autosize(el) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Inloggning                                                          */
+/* ------------------------------------------------------------------ */
+
+function renderLogin() {
+  document.title = 'Logga in – Mat för oss alla';
+  app.innerHTML = `
+    <main class="login">
+      <div class="login__plates" aria-hidden="true">
+        ${['🍛', '🌮', '🍝', '🥗', '🍕', '🍜'].map((e, i) => `<span style="--i:${i}">${e}</span>`).join('')}
+      </div>
+      <form class="login__card" novalidate>
+        <h1 class="login__title">Mat för oss alla</h1>
+        <p class="muted login__lead">Logga in för att se familjens maträtter.</p>
+        <label class="label" for="email">E-post</label>
+        <input id="email" type="email" class="input" autocomplete="username" inputmode="email" required>
+        <label class="label" for="password">Lösenord</label>
+        <input id="password" type="password" class="input" autocomplete="current-password" required>
+        <p class="login__error" role="alert" hidden></p>
+        <button type="submit" class="btn btn--primary btn--block btn--lg">Logga in</button>
+      </form>
+    </main>`;
+
+  const form = app.querySelector('form');
+  const err = app.querySelector('.login__error');
+  const btn = form.querySelector('button');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = form.email.value;
+    const password = form.password.value;
+    if (!email.trim() || !password) {
+      err.textContent = 'Fyll i e-post och lösenord.';
+      err.hidden = false;
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Loggar in…';
+    try {
+      await store.signIn(email, password);
+      await enter();
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.hidden = false;
+      btn.disabled = false;
+      btn.textContent = 'Logga in';
+    }
+  });
+  form.email.focus();
+}
+
+/* ------------------------------------------------------------------ */
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
 
 let lastRoute = '';
 
 async function route() {
+  if (!user) return renderLogin();
   const hash = location.hash.replace(/^#/, '') || '/';
   if (lastRoute === '/') homeScroll = window.scrollY;
   lastRoute = hash;
@@ -569,18 +627,34 @@ async function route() {
   }
 }
 
+let listening = false;
+
+// Körs när användaren är inloggad (eller direkt i lokalt läge).
+async function enter() {
+  user = await store.getUser();
+  if (!user) return renderLogin();
+  categories = await store.listCategories();
+  if (!listening) {
+    window.addEventListener('hashchange', route);
+    listening = true;
+  }
+  route();
+}
+
 async function start() {
   try {
     store = await createStore();
-    categories = await store.listCategories();
+    store.onSignedOut(() => {
+      user = null;
+      homeScroll = 0;
+      renderLogin();
+    });
+    await enter();
   } catch (e) {
     app.innerHTML = `<main class="wrap narrow empty"><div class="empty__emoji">🔌</div><h2>Kunde inte ansluta</h2><p class="muted">${esc(
       e.message
     )}</p></main>`;
-    return;
   }
-  window.addEventListener('hashchange', route);
-  route();
 }
 
 start();

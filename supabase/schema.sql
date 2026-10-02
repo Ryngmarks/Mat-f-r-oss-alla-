@@ -46,18 +46,18 @@ insert into category (name, sort_order) values
 on conflict (name) do nothing;
 
 -- Åtkomst ------------------------------------------------------------
--- Appen har ingen inloggning ännu, så anon-nyckeln får läsa och skriva.
--- Byt till policies baserade på auth.uid() när inloggning läggs till.
+-- Bara inloggade användare kan läsa och ändra. Alla inloggade delar samma bibliotek.
+-- Användare skapas i Supabase: Authentication → Users → Add user.
 
 alter table category        enable row level security;
 alter table ingredient      enable row level security;
 alter table meal            enable row level security;
 alter table meal_ingredient enable row level security;
 
-create policy "open category"        on category        for all using (true) with check (true);
-create policy "open ingredient"      on ingredient      for all using (true) with check (true);
-create policy "open meal"            on meal            for all using (true) with check (true);
-create policy "open meal_ingredient" on meal_ingredient for all using (true) with check (true);
+create policy "inloggade category"        on category        for all to authenticated using (true) with check (true);
+create policy "inloggade ingredient"      on ingredient      for all to authenticated using (true) with check (true);
+create policy "inloggade meal"            on meal            for all to authenticated using (true) with check (true);
+create policy "inloggade meal_ingredient" on meal_ingredient for all to authenticated using (true) with check (true);
 
 -- Bildlagring ----------------------------------------------------
 
@@ -66,6 +66,6 @@ values ('meal-images', 'meal-images', true)
 on conflict (id) do nothing;
 
 create policy "meal images read"   on storage.objects for select using (bucket_id = 'meal-images');
-create policy "meal images insert" on storage.objects for insert with check (bucket_id = 'meal-images');
-create policy "meal images update" on storage.objects for update using (bucket_id = 'meal-images');
-create policy "meal images delete" on storage.objects for delete using (bucket_id = 'meal-images');
+create policy "meal images insert" on storage.objects for insert to authenticated with check (bucket_id = 'meal-images');
+create policy "meal images update" on storage.objects for update to authenticated using (bucket_id = 'meal-images');
+create policy "meal images delete" on storage.objects for delete to authenticated using (bucket_id = 'meal-images');

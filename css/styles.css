@@ -907,3 +907,87 @@ h3 {
   justify-content: flex-end;
   gap: 10px;
 }
+
+/* ---------- Inloggning ---------- */
+
+.login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 28px;
+  padding: 32px 16px calc(32px + env(safe-area-inset-bottom));
+}
+
+.login__plates {
+  display: flex;
+  gap: 10px;
+}
+
+.login__plates span {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  font-size: 1.6rem;
+  background: hsl(calc(10 + var(--i) * 7) 85% 88%);
+  animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--i) * 60ms);
+}
+
+.login__card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 28px 22px;
+  box-shadow: var(--shadow);
+}
+
+.login__card .label {
+  font-size: 0.95rem;
+  margin: 18px 0 6px;
+}
+
+.login__card .btn {
+  margin-top: 24px;
+}
+
+.login__title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+.login__lead {
+  text-align: center;
+  margin: 6px 0 4px;
+}
+
+.login__error {
+  margin: 14px 0 0;
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.foot {
+  padding-top: 8px;
+  padding-bottom: 120px;
+  margin-top: -80px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 4px;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
