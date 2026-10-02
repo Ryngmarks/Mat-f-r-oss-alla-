@@ -159,6 +159,12 @@ class LocalStore {
   async myInvites() {
     return [];
   }
+  async getBank() {
+    return null;
+  }
+  async listBankMeals() {
+    return [];
+  }
 
   constructor() {
     try {
@@ -170,6 +176,7 @@ class LocalStore {
       this.db = seed();
       this.#persist();
     }
+    this.db.plan ??= [];
   }
 
   #persist() {
@@ -239,9 +246,49 @@ class LocalStore {
   }
 
   async deleteMeal(id) {
+    const meal = this.db.meals.find((m) => m.id === id);
     this.db.meals = this.db.meals.filter((m) => m.id !== id);
     this.db.meal_ingredients = this.db.meal_ingredients.filter((mi) => mi.meal_id !== id);
+    // Planerade dagar behåller rättens namn som text.
+    this.db.plan.forEach((p) => {
+      if (p.meal_id === id) {
+        p.meal_id = null;
+        p.text ||= meal?.name ?? null;
+      }
+    });
     this.#persist();
+  }
+
+  /* Veckoplanering */
+
+  async listPlan(from, to) {
+    return this.db.plan
+      .filter((p) => p.day >= from && p.day <= to)
+      .map((p) => {
+        const m = this.db.meals.find((x) => x.id === p.meal_id);
+        return { ...p, meal: m ? { id: m.id, name: m.name, image_url: m.image_url, library_id: 'local' } : null };
+      });
+  }
+
+  async setPlanMany(entries) {
+    for (const e of entries) {
+      this.db.plan = this.db.plan.filter((p) => !(p.day === e.day && p.slot === e.slot));
+      this.db.plan.push({ id: crypto.randomUUID(), day: e.day, slot: e.slot, meal_id: e.meal_id ?? null, text: e.text ?? null });
+    }
+    this.#persist();
+  }
+
+  async setPlan(day, slot, entry) {
+    await this.setPlanMany([{ day, slot, ...entry }]);
+  }
+
+  async clearPlan(day, slot) {
+    this.db.plan = this.db.plan.filter((p) => !(p.day === day && p.slot === slot));
+    this.#persist();
+  }
+
+  async listPlannedDays() {
+    return [...new Set(this.db.plan.map((p) => p.day))].sort().reverse();
   }
 }
 
@@ -256,7 +303,7 @@ class LocalStore {
 
 const MEAL_SELECT =
   'id, library_id, name, description, image_path, instructions, created_at, ' +
-  'meal_ingredient(category_id, amount, unit, position, ingredient(name))';
+  'meal_ingredient(category_id, amount, unit, position, ingredient(name), category(name, sort_order))';
 
 const URL_CACHE_KEY = 'mat-for-oss-alla.signed-urls';
 const SIGNED_TTL = 7 * 24 * 3600; // sekunder
@@ -324,7 +371,7 @@ class SupabaseStore {
   async listLibraries() {
     const user = await this.getUser();
     const rows = this.#check(
-      await this.sb.from('library_member').select('role, library(id, name, created_at)').eq('user_id', user.id)
+      await this.sb.from('library_member').select('role, library(*)').eq('user_id', user.id)
     );
     const counts = this.#check(await this.sb.from('library_member').select('library_id'));
     const members = counts.reduce((m, r) => m.set(r.library_id, (m.get(r.library_id) || 0) + 1), new Map());
@@ -409,8 +456,14 @@ class SupabaseStore {
     return (p) => (p ? this.urlCache[p]?.url ?? null : null);
   }
 
-  async #removeFile(path) {
-    if (path) await this.sb.storage.from(IMAGE_BUCKET).remove([path]);
+  // Tar bort en bildfil – men bara om ingen annan rätt (t.ex. i förslagsbanken) använder den.
+  async #removeFile(path, exceptMealId) {
+    if (!path) return;
+    let q = this.sb.from('meal').select('id', { count: 'exact', head: true }).eq('image_path', path);
+    if (exceptMealId) q = q.neq('id', exceptMealId);
+    const { count, error } = await q;
+    if (error || count > 0) return;
+    await this.sb.storage.from(IMAGE_BUCKET).remove([path]);
   }
 
   /* Maträtter */
@@ -422,6 +475,8 @@ class SupabaseStore {
       .map((mi) => ({
         name: mi.ingredient?.name ?? '',
         category_id: mi.category_id,
+        category_name: mi.category?.name ?? '',
+        category_sort: mi.category?.sort_order ?? 999,
         amount: mi.amount ?? '',
         unit: mi.unit ?? '',
       }));
@@ -439,34 +494,34 @@ class SupabaseStore {
     return rows.map((r) => r.name);
   }
 
-  async listMeals() {
+  async listMeals(libraryId = this.#lib()) {
     const rows = this.#check(
       await this.sb
         .from('meal')
         .select(MEAL_SELECT)
-        .eq('library_id', this.#lib())
+        .eq('library_id', libraryId)
         .order('created_at', { ascending: false })
     );
     const urlFor = await this.#signUrls(rows.map((r) => r.image_path));
     return rows.map((r) => this.#hydrate(r, urlFor));
   }
 
+  // Hämtar en rätt i valfri matsedel man har tillgång till (egen, delad eller förslagsbanken).
   async getMeal(id) {
-    const row = this.#check(
-      await this.sb.from('meal').select(MEAL_SELECT).eq('id', id).eq('library_id', this.#lib()).maybeSingle()
-    );
+    const row = this.#check(await this.sb.from('meal').select(MEAL_SELECT).eq('id', id).maybeSingle());
     if (!row) return null;
     return this.#hydrate(row, await this.#signUrls([row.image_path]));
   }
 
-  async saveMeal(meal, { imageBlob, removeImage } = {}) {
-    const lib = this.#lib();
+  async saveMeal(meal, { imageBlob, removeImage, libraryId, imagePath } = {}) {
     const id = meal.id ?? crypto.randomUUID();
     const previous = meal.id
-      ? this.#check(await this.sb.from('meal').select('image_path').eq('id', id).maybeSingle())
+      ? this.#check(await this.sb.from('meal').select('image_path, library_id').eq('id', id).maybeSingle())
       : null;
+    // En befintlig rätt stannar alltid i sin matsedel.
+    const lib = previous?.library_id ?? libraryId ?? this.#lib();
 
-    let image_path = previous?.image_path ?? null;
+    let image_path = previous?.image_path ?? imagePath ?? null;
     if (imageBlob) {
       image_path = `${lib}/${id}-${Date.now()}.jpg`;
       this.#check(
@@ -489,7 +544,7 @@ class SupabaseStore {
 
     // Gammal bild som ersatts eller tagits bort städas bort (best effort).
     if (previous?.image_path && previous.image_path !== image_path) {
-      this.#removeFile(previous.image_path).catch(() => {});
+      this.#removeFile(previous.image_path, id).catch(() => {});
     }
 
     const ingredients = uniqueIngredients(meal.ingredients);
@@ -529,5 +584,101 @@ class SupabaseStore {
     const row = this.#check(await this.sb.from('meal').select('image_path').eq('id', id).maybeSingle());
     this.#check(await this.sb.from('meal').delete().eq('id', id));
     if (row?.image_path) this.#removeFile(row.image_path).catch(() => {});
+  }
+
+  /* Förslagsbanken */
+
+  async getBank() {
+    if (this.bank !== undefined) return this.bank;
+    try {
+      const { data, error } = await this.sb.from('library').select('id, name').eq('is_public', true).limit(1);
+      this.bank = error ? null : data?.[0] ?? null; // null även om databasen inte uppdaterats än
+    } catch {
+      this.bank = null;
+    }
+    return this.bank;
+  }
+
+  async listBankMeals() {
+    const bank = await this.getBank();
+    return bank ? this.listMeals(bank.id) : [];
+  }
+
+  // Kopierar en rätt (t.ex. från förslagsbanken) till en annan matsedel. Kategorier matchas
+  // på namn. Bilden kopieras inom lagringen – eller återanvänds om målet är förslagsbanken.
+  async copyMeal(mealId, targetId = this.#lib()) {
+    const src = await this.getMeal(mealId);
+    if (!src) throw new Error('Rätten finns inte längre');
+    const cats = this.#check(await this.sb.from('category').select('id, name').eq('library_id', targetId));
+    const byName = new Map(cats.map((c) => [c.name.toLocaleLowerCase('sv'), c.id]));
+    const fallback = byName.get('övrigt') ?? cats.at(-1)?.id;
+    const id = crypto.randomUUID();
+
+    let imagePath = null;
+    if (src.image_path) {
+      const bank = await this.getBank();
+      if (bank?.id === targetId) {
+        imagePath = src.image_path;
+      } else {
+        const to = `${targetId}/${id}-${Date.now()}.jpg`;
+        const { error } = await this.sb.storage.from(IMAGE_BUCKET).copy(src.image_path, to);
+        if (!error) imagePath = to;
+      }
+    }
+
+    return this.saveMeal(
+      {
+        id,
+        name: src.name,
+        description: src.description,
+        instructions: src.instructions,
+        ingredients: src.ingredients.map((i) => ({
+          ...i,
+          category_id: byName.get(i.category_name.toLocaleLowerCase('sv')) ?? fallback,
+        })),
+      },
+      { libraryId: targetId, imagePath }
+    );
+  }
+
+  /* Veckoplanering */
+
+  async listPlan(from, to) {
+    const rows = this.#check(
+      await this.sb
+        .from('plan_entry')
+        .select('id, day, slot, meal_id, text, meal(id, name, image_path, library_id)')
+        .eq('library_id', this.#lib())
+        .gte('day', from)
+        .lte('day', to)
+    );
+    const urlFor = await this.#signUrls(rows.map((r) => r.meal?.image_path));
+    return rows.map((r) => ({ ...r, meal: r.meal ? { ...r.meal, image_url: urlFor(r.meal.image_path) } : null }));
+  }
+
+  async setPlanMany(entries) {
+    if (!entries.length) return;
+    const lib = this.#lib();
+    this.#check(
+      await this.sb.from('plan_entry').upsert(
+        entries.map((e) => ({ library_id: lib, day: e.day, slot: e.slot, meal_id: e.meal_id ?? null, text: e.text ?? null })),
+        { onConflict: 'library_id,day,slot' }
+      )
+    );
+  }
+
+  async setPlan(day, slot, entry) {
+    await this.setPlanMany([{ day, slot, ...entry }]);
+  }
+
+  async clearPlan(day, slot) {
+    this.#check(await this.sb.from('plan_entry').delete().eq('library_id', this.#lib()).eq('day', day).eq('slot', slot));
+  }
+
+  async listPlannedDays() {
+    const rows = this.#check(
+      await this.sb.from('plan_entry').select('day').eq('library_id', this.#lib()).order('day', { ascending: false }).limit(2000)
+    );
+    return [...new Set(rows.map((r) => r.day))];
   }
 }

@@ -4,6 +4,7 @@ import { esc, toast, confirmDialog, ICON } from './ui.js';
 import { openLibrarySheet } from './libraries.js';
 import { renderImport } from './import.js';
 import { renderSwipe } from './swipe.js';
+import { renderPlanner, toISO } from './planner.js';
 
 const app = document.getElementById('app');
 let store;
@@ -29,11 +30,26 @@ function sortedIngredients(meal) {
 // "Kyckling • Ris • Curry" – de tre första ingredienserna i kategoriordning.
 const tagline = (meal) => sortedIngredients(meal).slice(0, 3).map((i) => i.name).join(' • ');
 
-function grouped(ingredients) {
-  return categories
+// Grupperar ingredienser per kategori. Rätter från en annan matsedel (t.ex. förslagsbanken)
+// har egna kategori-id:n – då används kategorinamnen som följer med ingredienserna.
+function grouped(ingredients, cats = categories) {
+  const known = new Set(cats.map((c) => c.id));
+  if (ingredients.some((i) => !known.has(i.category_id))) {
+    const own = new Map();
+    for (const i of ingredients) {
+      if (!own.has(i.category_id)) {
+        own.set(i.category_id, { id: i.category_id, name: i.category_name || 'Övrigt', sort_order: i.category_sort ?? 999 });
+      }
+    }
+    cats = [...own.values()].sort((a, b) => a.sort_order - b.sort_order);
+  }
+  return cats
     .map((c) => ({ category: c, items: ingredients.filter((i) => i.category_id === c.id) }))
     .filter((g) => g.items.length);
 }
+
+// Är rätten i den matsedel man står i (och får alltså redigeras här)?
+const isHere = (meal) => !meal.library_id || meal.library_id === store.library.id;
 
 const amountText = (i) => [i.amount, i.unit].filter(Boolean).join(' ');
 
@@ -70,7 +86,9 @@ function media(meal, cls = '') {
 document.addEventListener(
   'error',
   (e) => {
-    if (e.target instanceof HTMLImageElement && e.target.closest('.media')) e.target.remove();
+    if (!(e.target instanceof HTMLImageElement)) return;
+    if (e.target.closest('.media')) e.target.remove();
+    else if (e.target.closest('.slot__thumb, .pick__img, .import__img')) e.target.outerHTML = '<span aria-hidden="true">🍽️</span>';
   },
   true
 );
@@ -82,6 +100,12 @@ document.addEventListener(
 
 async function renderHome() {
   const meals = await store.listMeals();
+  let tonight = null;
+  try {
+    const t = toISO(new Date());
+    const e = (await store.listPlan(t, t)).find((x) => x.slot === 'middag');
+    tonight = e?.meal?.name ?? e?.text ?? null;
+  } catch {}
   document.title = 'Mat för oss alla';
 
   const cards = meals
@@ -123,14 +147,20 @@ async function renderHome() {
           : ''
       }
       <h1 class="home__title">Vad är du sugen på?</h1>
-      ${
-        meals.length > 1
-          ? `<a href="#/valj" class="swipe-cta">
-               <span class="swipe-cta__icons" aria-hidden="true">😋</span>
-               <span><strong>Swipa fram middagen</strong><small>Ja eller nej – en rätt i taget</small></span>
-             </a>`
-          : ''
-      }
+      <div class="cta-row">
+        <a href="#/vecka" class="swipe-cta swipe-cta--plan">
+          <span class="swipe-cta__icons" aria-hidden="true">🗓️</span>
+          <span><strong>Veckoplanering</strong><small>${tonight ? `Ikväll: ${esc(tonight)}` : 'Lunch och middag, måndag–söndag'}</small></span>
+        </a>
+        ${
+          meals.length > 1
+            ? `<a href="#/valj" class="swipe-cta">
+                 <span class="swipe-cta__icons" aria-hidden="true">😋</span>
+                 <span><strong>Swipa fram middagen</strong><small>Ja eller nej – en rätt i taget</small></span>
+               </a>`
+            : ''
+        }
+      </div>
       ${
         store.library.members > 1
           ? `<p class="home__shared">Delad matsedel · ${store.library.members} personer</p>`
@@ -177,6 +207,14 @@ async function renderDetail(id) {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  const here = isHere(meal);
+  const bank = await store.getBank();
+  const fromBank = !here && bank && meal.library_id === bank.id;
+  // Ägaren av förslagsbanken kan lägga egna rätter dit.
+  const canAddToBank = here && bank && bank.id !== store.library.id && libraries.some((l) => l.id === bank.id);
+  const back =
+    previousRoute.startsWith('/valj') || previousRoute.startsWith('/vecka') ? `#${previousRoute}` : '#/';
+
   const groups = grouped(meal.ingredients)
     .map(
       (g) => `
@@ -198,17 +236,33 @@ async function renderDetail(id) {
       <div class="hero">
         ${media(meal, 'hero__media')}
         <nav class="hero__bar">
-          <a href="${previousRoute.startsWith('/valj') ? '#/valj' : '#/'}" class="round" aria-label="Tillbaka">${ICON.back}</a>
-          <span class="hero__actions">
-            <a href="#/redigera/${meal.id}" class="round" aria-label="Redigera">${ICON.edit}</a>
-            <button type="button" class="round" data-delete aria-label="Ta bort">${ICON.trash}</button>
-          </span>
+          <a href="${back}" class="round" aria-label="Tillbaka">${ICON.back}</a>
+          ${
+            here
+              ? `<span class="hero__actions">
+                   <a href="#/redigera/${meal.id}" class="round" aria-label="Redigera">${ICON.edit}</a>
+                   <button type="button" class="round" data-delete aria-label="Ta bort">${ICON.trash}</button>
+                 </span>`
+              : ''
+          }
         </nav>
       </div>
 
       <div class="wrap narrow detail__body">
+        ${fromBank ? '<span class="pill pill--bank">Från förslagsbanken</span>' : ''}
         <h1 class="detail__name">${esc(meal.name)}</h1>
         ${meal.description ? `<p class="detail__lead">${esc(meal.description)}</p>` : ''}
+        ${
+          !here
+            ? `<div class="detail__actions">
+                 <button type="button" class="btn btn--primary" data-copy-here>Spara i ${esc(store.library.name)}</button>
+               </div>`
+            : canAddToBank
+              ? `<div class="detail__actions">
+                   <button type="button" class="btn btn--ghost" data-copy-bank>Lägg i förslagsbanken</button>
+                 </div>`
+              : ''
+        }
 
         <section class="block">
           <h2 class="block__title">Du behöver</h2>
@@ -228,7 +282,28 @@ async function renderDetail(id) {
 
   window.scrollTo(0, 0);
 
-  app.querySelector('[data-delete]').addEventListener('click', async () => {
+  const copyBtn = app.querySelector('[data-copy-here], [data-copy-bank]');
+  copyBtn?.addEventListener('click', async () => {
+    const toBank = copyBtn.matches('[data-copy-bank]');
+    copyBtn.disabled = true;
+    copyBtn.textContent = 'Sparar…';
+    try {
+      const newId = await store.copyMeal(meal.id, toBank ? bank.id : store.library.id);
+      if (toBank) {
+        toast(`${meal.name} finns nu i förslagsbanken`);
+        copyBtn.textContent = 'Tillagd i förslagsbanken ✓';
+      } else {
+        toast(`${meal.name} är sparad i ${store.library.name}`);
+        location.hash = `#/maltid/${newId}`;
+      }
+    } catch (e) {
+      toast(e.message);
+      copyBtn.disabled = false;
+      copyBtn.textContent = toBank ? 'Lägg i förslagsbanken' : `Spara i ${store.library.name}`;
+    }
+  });
+
+  app.querySelector('[data-delete]')?.addEventListener('click', async () => {
     if (
       !(await confirmDialog({
         title: 'Ta bort maträtten?',
@@ -263,7 +338,7 @@ const UNITS = ['g', 'kg', 'st', 'dl', 'ml', 'l', 'msk', 'tsk', 'krm', 'burk', 'p
 
 async function renderForm(id) {
   const meal = id ? await store.getMeal(id) : null;
-  if (id && !meal) return renderNotFound();
+  if (id && (!meal || !isHere(meal))) return renderNotFound();
   const known = await store.listIngredientNames().catch(() => []);
   document.title = meal ? `Redigera ${meal.name}` : 'Ny maträtt';
 
@@ -640,6 +715,7 @@ async function route() {
     else if (page === 'redigera' && id) await renderForm(id);
     else if (page === 'importera') await renderImport({ app, store, categories });
     else if (page === 'valj') await renderSwipe({ app, store, media, tagline });
+    else if (page === 'vecka') await renderPlanner({ app, store, mondayIso: id });
     else renderNotFound();
   } catch (e) {
     console.error(e);

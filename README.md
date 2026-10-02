@@ -35,6 +35,10 @@ När Supabase ska kopplas på:
 2. Kör `supabase/schema.sql` i **SQL Editor**. Den skapar tabellerna, reglerna och den
    privata bucketen `meal-images`. Filen bygger om tabellerna från grunden, så befintliga
    maträtter raderas om den körs igen.
+
+   Har du redan en databas igång? Kör i stället bara de nyare filerna, i nummerordning –
+   de lägger till och raderar ingenting:
+   `supabase/02_forslagsbank_och_veckoplanering.sql`
 3. Fyll i `SUPABASE_URL` och `SUPABASE_ANON_KEY` i `js/config.js`
    (finns under *Project Settings → API*).
 
@@ -57,6 +61,39 @@ släpper bara fram matsedlar man är medlem i.
 - **Dela:** tryck på matsedelns namn uppe till vänster → *Dela* → skriv e-postadressen.
   Mottagaren ser inbjudan när hen loggar in och väljer *Godkänn* eller *Nej tack*.
 - **Ägaren** kan ta bort medlemmar och hela matsedeln. **Medlemmar** kan lämna.
+
+## Förslagsbank
+
+En gemensam matsedel som **alla inloggade kan läsa** men bara ägaren kan ändra. Den används som
+grund för förslag i veckoplaneringen, och en rätt därifrån kan sparas i den egna matsedeln
+(*Spara i …* på receptsidan). Ägaren kan lägga egna rätter i banken med *Lägg i förslagsbanken*,
+eller byta till matsedeln *Förslagsbank* och lägga till och redigera där.
+
+Bilderna återanvänds: rätterna i banken pekar på samma bildfiler som originalen, och en bild tas
+bara bort när ingen rätt längre använder den. När någon sparar en bankrätt i sin egen matsedel
+kopieras bilden inom lagringen så att kopian klarar sig själv.
+
+Skapa banken en gång i SQL Editor (efter `02_forslagsbank_och_veckoplanering.sql`):
+
+```sql
+select create_suggestion_bank('din@epost.se');
+```
+
+Den kopierar alla rätter i din första egna matsedel till en ny matsedel som heter *Förslagsbank*.
+Funktionen kan bara köras i SQL Editor, inte från appen.
+
+## Veckoplanering
+
+**Veckoplanering** på startsidan visar en kalendervecka, måndag–söndag, med **Lunch** och
+**Middag**. Tryck **+ Välj** i en ruta, välj **Egen matsedel** eller **Förslagsbank**, sök och
+tryck på en rätt – eller skriv något eget, t.ex. *Rester*. Allt sparas direkt.
+
+- Pilarna byter vecka; *Sparade veckor* listar veckor som har planering.
+- *Kopiera förra veckan* fyller de tomma rutorna med förra veckans måltider.
+- Planen hör till matsedeln – alla som delar matsedeln ser och ändrar samma vecka.
+- Rutorna pekar på recepten, inga bilder sparas för veckorna. Tas ett recept bort finns namnet
+  kvar i planen som text.
+- Startsidan visar kvällens middag.
 
 ## Swipa fram middagen
 
@@ -116,6 +153,7 @@ index.html          Skal, typsnitt, dialog
 css/styles.css      All design (mobile first, mörkt läge)
 js/app.js           Vyer och router: inloggning, startsida, detaljsida, skapa/redigera
 js/libraries.js     Panelen Matsedlar: byta, skapa, dela, godkänna inbjudningar
+js/planner.js       Veckoplanering och väljaren (egen matsedel / förslagsbank)
 js/swipe.js         Swipa fram middagen (ja/nej och resultatlista)
 js/import.js        Import av maträtter (t.ex. från ChatGPT)
 js/ui.js            Små delade hjälpare (escape, toast, dialog, ikoner)
@@ -123,18 +161,20 @@ js/store.js         Datalager – LocalStore och SupabaseStore med samma gränss
 js/image.js         Skalar ner och komprimerar bilder före uppladdning
 js/config.js        Supabase-nycklar
 import/             Instruktion till ChatGPT och exempelfil
-supabase/schema.sql Tabeller, funktioner, RLS och privat bildbucket
+supabase/schema.sql Hela databasen från grunden (tabeller, funktioner, RLS, bildbucket)
+supabase/02_…sql    Tillägg för en befintlig databas: förslagsbank och veckoplanering
 ```
 
 ## Datamodell
 
-- `library` – id, name, created_by, created_at
+- `library` – id, name, created_by, created_at, is_public (förslagsbanken)
 - `library_member` – library_id, user_id, role (`owner`/`member`)
 - `library_invite` – id, library_id, email, invited_by
 - `meal` – id, library_id, name, description, image_path, instructions, created_at
 - `ingredient` – id, library_id, name
 - `category` – id, library_id, name, sort_order
 - `meal_ingredient` – meal_id, ingredient_id, category_id, amount, unit, position
+- `plan_entry` – id, library_id, day, slot (`lunch`/`middag`), meal_id, text
 
 Varje ny matsedel får standardkategorierna Protein, Kolhydrater, Grönsaker, Sås och Övrigt.
 Kategorierna ligger i tabellen `category` och kan ändras per matsedel.
