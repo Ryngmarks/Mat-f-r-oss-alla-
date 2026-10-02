@@ -1961,3 +1961,7 @@ h3 {
 .detail__actions {
   margin-top: 18px;
 }
+
+.empty p {
+  overflow-wrap: anywhere;
+}
