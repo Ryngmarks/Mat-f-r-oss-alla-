@@ -5,6 +5,7 @@ import { openLibrarySheet } from './libraries.js';
 import { renderImport } from './import.js';
 import { renderSwipe } from './swipe.js';
 import { renderPlanner, toISO } from './planner.js';
+import { renderShopping, stopShopping } from './shopping.js';
 
 const app = document.getElementById('app');
 let store;
@@ -101,6 +102,10 @@ document.addEventListener(
 async function renderHome() {
   const meals = await store.listMeals();
   let tonight = null;
+  let shopLeft = 0;
+  try {
+    shopLeft = (await store.getShopping()).items.filter((i) => !i.checked && !i.pantry).length;
+  } catch {}
   try {
     const t = toISO(new Date());
     const e = (await store.listPlan(t, t)).find((x) => x.slot === 'middag');
@@ -152,6 +157,14 @@ async function renderHome() {
           <span class="swipe-cta__icons" aria-hidden="true">🗓️</span>
           <span><strong>Veckoplanering</strong><small>${tonight ? `Ikväll: ${esc(tonight)}` : 'Lunch och middag, måndag–söndag'}</small></span>
         </a>
+        ${
+          shopLeft
+            ? `<a href="#/handla" class="swipe-cta swipe-cta--shop">
+                 <span class="swipe-cta__icons" aria-hidden="true">🛒</span>
+                 <span><strong>Inköpslista</strong><small>${shopLeft} ${shopLeft === 1 ? 'vara' : 'varor'} kvar att handla</small></span>
+               </a>`
+            : ''
+        }
         ${
           meals.length > 1
             ? `<a href="#/valj" class="swipe-cta">
@@ -706,6 +719,7 @@ async function route() {
   if (lastRoute === '/') homeScroll = window.scrollY;
   previousRoute = lastRoute;
   lastRoute = hash;
+  stopShopping();
 
   const [, page, id] = hash.split('/');
   try {
@@ -715,7 +729,8 @@ async function route() {
     else if (page === 'redigera' && id) await renderForm(id);
     else if (page === 'importera') await renderImport({ app, store, categories });
     else if (page === 'valj') await renderSwipe({ app, store, media, tagline });
-    else if (page === 'vecka') await renderPlanner({ app, store, mondayIso: id });
+    else if (page === 'vecka') await renderPlanner({ app, store, mondayIso: id, categories });
+    else if (page === 'handla') await renderShopping({ app, store, categories, back: previousRoute.startsWith('/vecka') ? `#${previousRoute}` : '#/' });
     else renderNotFound();
   } catch (e) {
     console.error(e);

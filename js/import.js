@@ -33,6 +33,12 @@ const GUESS = [
   ['gronsaker', /sallad|tomat|lök|gurka|paprika|morot|broccoli|blomkål|spenat|vitlök|svamp|champinjon|majs|ärtor|avokado|zucchini|squash|kål|selleri|aubergine|rädis|ruccola|chili|ingefära|bladpersilja|koriander|purjo|sparris|bönor gröna|haricots/],
 ];
 
+// 'protein' | 'kolhydrater' | 'gronsaker' | 'sas' | null
+export function guessCategoryKey(name) {
+  const n = String(name).toLocaleLowerCase('sv');
+  return GUESS.find(([, re]) => re.test(n))?.[0] ?? null;
+}
+
 function categoryResolver(categories) {
   const byName = new Map(categories.map((c) => [fold(c.name), c.id]));
   const fallback = byName.get('ovrigt') ?? categories.at(-1)?.id;

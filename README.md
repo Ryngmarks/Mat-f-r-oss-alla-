@@ -38,7 +38,7 @@ När Supabase ska kopplas på:
 
    Har du redan en databas igång? Kör i stället bara de nyare filerna, i nummerordning –
    de lägger till och raderar ingenting:
-   `supabase/02_forslagsbank_och_veckoplanering.sql`
+   `supabase/02_forslagsbank_och_veckoplanering.sql`, `supabase/03_inkopslista.sql`
 3. Fyll i `SUPABASE_URL` och `SUPABASE_ANON_KEY` i `js/config.js`
    (finns under *Project Settings → API*).
 
@@ -94,6 +94,23 @@ tryck på en rätt – eller skriv något eget, t.ex. *Rester*. Allt sparas dire
 - Rutorna pekar på recepten, inga bilder sparas för veckorna. Tas ett recept bort finns namnet
   kvar i planen som text.
 - Startsidan visar kvällens middag.
+
+## Inköpslista
+
+I veckoplaneringen trycker man **🛒 Gör inköpslista**, väljer dagar och får en gemensam lista för
+matsedeln.
+
+- Samma vara från flera rätter slås ihop: vikt räknas om till g/kg, volym till ml/dl/l, övriga
+  enheter (st, msk, burk …) summeras var för sig, t.ex. *Lök 3 st + 2 dl*. Under varje vara står
+  vilka rätter den kommer från. Fritext i planen (t.ex. *Rester*) kommer inte med.
+- Varorna grupperas per kategori. Bocka av medan du handlar – det syns direkt hos alla i
+  matsedeln (Supabase Realtime, plus en kontroll var 20:e sekund).
+- **Egna varor** (t.ex. diskmedel) läggs till överst och ligger kvar när listan uppdateras.
+  Skapar man listan igen ersätts de framräknade varorna, men det som redan är avbockat förblir
+  avbockat.
+- **Basvaror** (salt, peppar, olja, smör …) hamnar under *Har du hemma?*. Tryck *Behövs* för att
+  ta med en den här gången, eller på husikonen vid en vara för att göra den till basvara.
+- Dela-knappen skickar listan som text (Anteckningar, sms, Messenger).
 
 ## Swipa fram middagen
 
@@ -154,6 +171,7 @@ css/styles.css      All design (mobile first, mörkt läge)
 js/app.js           Vyer och router: inloggning, startsida, detaljsida, skapa/redigera
 js/libraries.js     Panelen Matsedlar: byta, skapa, dela, godkänna inbjudningar
 js/planner.js       Veckoplanering och väljaren (egen matsedel / förslagsbank)
+js/shopping.js      Inköpslista: sammanslagning, basvaror, delad lista
 js/swipe.js         Swipa fram middagen (ja/nej och resultatlista)
 js/import.js        Import av maträtter (t.ex. från ChatGPT)
 js/ui.js            Små delade hjälpare (escape, toast, dialog, ikoner)
@@ -163,6 +181,7 @@ js/config.js        Supabase-nycklar
 import/             Instruktion till ChatGPT och exempelfil
 supabase/schema.sql Hela databasen från grunden (tabeller, funktioner, RLS, bildbucket)
 supabase/02_…sql    Tillägg för en befintlig databas: förslagsbank och veckoplanering
+supabase/03_…sql    Tillägg: inköpslista och basvaror
 ```
 
 ## Datamodell
@@ -175,6 +194,9 @@ supabase/02_…sql    Tillägg för en befintlig databas: förslagsbank och veck
 - `category` – id, library_id, name, sort_order
 - `meal_ingredient` – meal_id, ingredient_id, category_id, amount, unit, position
 - `plan_entry` – id, library_id, day, slot (`lunch`/`middag`), meal_id, text
+- `shopping_item` – id, library_id, name, amount, category, sources, checked, manual, pantry
+- `pantry_item` – library_id, name, active (basvaror)
+- `shopping_list` – library_id, label, updated_at
 
 Varje ny matsedel får standardkategorierna Protein, Kolhydrater, Grönsaker, Sås och Övrigt.
 Kategorierna ligger i tabellen `category` och kan ändras per matsedel.

@@ -13,7 +13,7 @@
 
 -- Rensa ----------------------------------------------------------
 
-drop table if exists plan_entry, meal_ingredient, meal, ingredient, category,
+drop table if exists shopping_item, pantry_item, shopping_list, plan_entry, meal_ingredient, meal, ingredient, category,
   library_invite, library_member, library cascade;
 
 -- Tabeller -------------------------------------------------------
@@ -347,3 +347,61 @@ alter table plan_entry enable row level security;
 drop policy if exists "medlem plan_entry" on plan_entry;
 create policy "medlem plan_entry" on plan_entry for all to authenticated
   using (is_member(library_id)) with check (is_member(library_id));
+
+-- ===== Inköpslista (samma som 03_inkopslista.sql) =====
+
+create table if not exists shopping_item (
+  id          uuid primary key default gen_random_uuid(),
+  library_id  uuid not null references library(id) on delete cascade,
+  name        text not null,
+  amount      text,           -- färdig text, t.ex. "900 g" eller "1 st + 2 dl"
+  category    text,           -- kategorinamn, t.ex. "Protein"
+  sources     text,           -- rätterna varan kommer från, t.ex. "Tacos, Lasagne"
+  checked     boolean not null default false,
+  manual      boolean not null default false,
+  pantry      boolean not null default false,
+  position    int not null default 0,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists shopping_item_library_idx on shopping_item (library_id);
+
+create table if not exists pantry_item (
+  library_id  uuid not null references library(id) on delete cascade,
+  name        text not null,  -- gemener
+  active      boolean not null default true,
+  primary key (library_id, name)
+);
+
+create table if not exists shopping_list (
+  library_id  uuid primary key references library(id) on delete cascade,
+  label       text,
+  updated_at  timestamptz not null default now()
+);
+
+alter table shopping_item enable row level security;
+alter table pantry_item   enable row level security;
+alter table shopping_list enable row level security;
+
+drop policy if exists "medlem shopping_item" on shopping_item;
+drop policy if exists "medlem pantry_item"   on pantry_item;
+drop policy if exists "medlem shopping_list" on shopping_list;
+
+create policy "medlem shopping_item" on shopping_item for all to authenticated
+  using (is_member(library_id)) with check (is_member(library_id));
+create policy "medlem pantry_item" on pantry_item for all to authenticated
+  using (is_member(library_id)) with check (is_member(library_id));
+create policy "medlem shopping_list" on shopping_list for all to authenticated
+  using (is_member(library_id)) with check (is_member(library_id));
+
+-- Realtid: avbockningar syns direkt hos de andra i matsedeln.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'shopping_item'
+     ) then
+    alter publication supabase_realtime add table shopping_item;
+  end if;
+end $$;

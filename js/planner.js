@@ -2,6 +2,7 @@
 // (egen matsedel eller förslagsbanken) eller en fritext. Sparas direkt per matsedel.
 
 import { esc, toast, ICON } from './ui.js';
+import { generateShopping } from './shopping.js';
 
 const DAYS = ['Måndag', 'Tisdag', 'Onsdag', 'Torsdag', 'Fredag', 'Lördag', 'Söndag'];
 const SLOTS = [
@@ -47,7 +48,7 @@ const PICK =
 
 /* ------------------------------------------------------------------ */
 
-export async function renderPlanner({ app, store, mondayIso }) {
+export async function renderPlanner({ app, store, mondayIso, categories = [] }) {
   const today = toISO(new Date());
   const monday = mondayIso ? mondayOf(fromISO(mondayIso)) : mondayOf(new Date());
   const days = DAYS.map((name, i) => ({ name, date: addDays(monday, i) })).map((d) => ({ ...d, iso: toISO(d.date) }));
@@ -176,6 +177,7 @@ export async function renderPlanner({ app, store, mondayIso }) {
       </div>
 
       <div class="planner__actions">
+        <button type="button" class="btn btn--primary" data-shop>🛒 Gör inköpslista</button>
         <button type="button" class="btn btn--ghost" data-copy-prev>Kopiera förra veckan</button>
       </div>
 
@@ -184,7 +186,11 @@ export async function renderPlanner({ app, store, mondayIso }) {
 
   window.scrollTo(0, 0);
 
-  const redraw = () => renderPlanner({ app, store, mondayIso: from });
+  const redraw = () => renderPlanner({ app, store, mondayIso: from, categories });
+
+  app.querySelector('[data-shop]').addEventListener('click', () =>
+    openShoppingSheet({ store, categories, days, entries, label: `Vecka ${week}` })
+  );
 
   app.querySelectorAll('[data-clear]').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -351,4 +357,92 @@ async function openPicker({ store, bank, title, onPick }) {
   });
 
   draw();
+}
+
+/* ------------------------------------------------------------------ */
+/* Inköpslista från veckan                                             */
+/* ------------------------------------------------------------------ */
+
+let shopDlg;
+
+async function openShoppingSheet({ store, categories, days, entries, label }) {
+  const withMeal = entries.filter((e) => e.meal);
+  if (!withMeal.length) return toast('Lägg in några rätter i veckan först');
+
+  if (!shopDlg) {
+    shopDlg = document.createElement('dialog');
+    shopDlg.className = 'sheet';
+    document.body.append(shopDlg);
+    shopDlg.addEventListener('click', (e) => {
+      if (e.target === shopDlg) shopDlg.close();
+    });
+  }
+
+  let existing = null;
+  try {
+    existing = await store.getShopping();
+  } catch (e) {
+    return toast(`Inköpslistan är inte påslagen än – kör supabase/03_inkopslista.sql. (${e.message})`);
+  }
+  const selected = new Set(days.filter((d) => withMeal.some((e) => e.day === d.iso)).map((d) => d.iso));
+  const generated = existing.items.filter((i) => !i.manual).length;
+  const own = existing.items.filter((i) => i.manual).length;
+
+  const draw = () => {
+    const meals = withMeal.filter((e) => selected.has(e.day));
+    shopDlg.innerHTML = `
+      <div class="sheet__body">
+        <div class="sheet__head">
+          <h2 class="sheet__title">Inköpslista</h2>
+          <button type="button" class="round round--plain" data-close aria-label="Stäng">${ICON.x}</button>
+        </div>
+        <p class="muted sheet__note">Välj vilka dagar som ska handlas för. Samma vara från flera rätter slås ihop.</p>
+        <div class="day-chips">
+          ${days
+            .map((d) => {
+              const n = withMeal.filter((e) => e.day === d.iso).length;
+              return `<button type="button" class="chip${selected.has(d.iso) ? ' is-on' : ''}" data-day="${d.iso}" ${n ? '' : 'disabled'}>
+                ${d.name.slice(0, 3)}${n ? ` <small>${n}</small>` : ''}
+              </button>`;
+            })
+            .join('')}
+        </div>
+        ${
+          generated
+            ? `<p class="muted sheet__note">Ersätter förra listan${existing.label ? ` (${esc(existing.label)})` : ''}.${
+                own ? (own === 1 ? ' Din egna vara ligger kvar.' : ` Dina ${own} egna varor ligger kvar.`) : ''
+              } Det du redan bockat av förblir avbockat.</p>`
+            : ''
+        }
+        <button type="button" class="btn btn--primary btn--block btn--lg" data-make ${meals.length ? '' : 'disabled'}>
+          Skapa lista från ${meals.length} ${meals.length === 1 ? 'måltid' : 'måltider'}
+        </button>
+      </div>`;
+    shopDlg.querySelector('[data-close]').addEventListener('click', () => shopDlg.close());
+    shopDlg.querySelectorAll('[data-day]').forEach((b) =>
+      b.addEventListener('click', () => {
+        selected.has(b.dataset.day) ? selected.delete(b.dataset.day) : selected.add(b.dataset.day);
+        draw();
+      })
+    );
+    shopDlg.querySelector('[data-make]').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = 'Räknar ihop…';
+      try {
+        const chosenDays = days.filter((d) => selected.has(d.iso));
+        const all = chosenDays.length === 7 || chosenDays.length === days.filter((d) => withMeal.some((x) => x.day === d.iso)).length;
+        const name = all ? label : `${label} · ${chosenDays.map((d) => d.name.slice(0, 3).toLocaleLowerCase('sv')).join(', ')}`;
+        const n = await generateShopping(store, categories, meals.map((m) => m.meal.id), name);
+        shopDlg.close();
+        toast(`${n} varor i listan`);
+        location.hash = '#/handla';
+      } catch (err) {
+        toast(err.message);
+        draw();
+      }
+    });
+  };
+
+  draw();
+  if (!shopDlg.open) shopDlg.showModal();
 }

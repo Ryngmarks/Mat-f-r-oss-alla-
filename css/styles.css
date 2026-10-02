@@ -1993,3 +1993,149 @@ h3 {
   -webkit-touch-callout: none;
   -webkit-user-drag: none;
 }
+
+/* ---------- Inköpslista ---------- */
+
+.swipe-cta--shop {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.planner__actions {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+
+.day-chips .chip:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.day-chips small {
+  opacity: 0.7;
+}
+
+.shop {
+  padding-bottom: 80px;
+}
+
+.shop__meta {
+  margin: 4px 0 14px;
+}
+
+.shop__meta strong {
+  color: var(--accent);
+}
+
+.shop__add {
+  margin-bottom: 18px;
+}
+
+.shop-group {
+  padding-right: 6px;
+}
+
+.shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.shop-list .shop-item:first-child {
+  border-top: 0;
+}
+
+.shop-item__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.shop-item__main input {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  accent-color: var(--accent);
+}
+
+.shop-item__text {
+  display: grid;
+  min-width: 0;
+}
+
+.shop-item__name {
+  font-size: 1.05rem;
+}
+
+.shop-item__text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shop-item.is-checked .shop-item__name {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.shop-item .ing__remove {
+  color: var(--muted);
+}
+
+.shop-pantry .shop-list {
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 4px 16px;
+}
+
+.shop-item--pantry {
+  justify-content: space-between;
+  padding: 10px 0;
+}
+
+.shop-item__pantry-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.btn--sm {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.9rem;
+}
+
+.shop__note {
+  margin: -6px 0 12px;
+}
+
+.shop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.shop__empty {
+  padding: 32px 16px;
+}

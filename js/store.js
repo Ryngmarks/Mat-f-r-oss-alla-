@@ -177,6 +177,9 @@ class LocalStore {
       this.#persist();
     }
     this.db.plan ??= [];
+    this.db.shopping ??= [];
+    this.db.pantry ??= [];
+    this.db.shoppingLabel ??= null;
   }
 
   #persist() {
@@ -289,6 +292,64 @@ class LocalStore {
 
   async listPlannedDays() {
     return [...new Set(this.db.plan.map((p) => p.day))].sort().reverse();
+  }
+
+  async getMealsByIds(ids) {
+    return this.db.meals.filter((m) => ids.includes(m.id)).map((m) => this.#hydrate(m));
+  }
+
+  /* Inköpslista */
+
+  async getShopping() {
+    return { label: this.db.shoppingLabel, items: [...this.db.shopping] };
+  }
+
+  async listPantry() {
+    return this.db.pantry.map((p) => ({ ...p }));
+  }
+
+  async setPantry(name, active) {
+    const key = name.toLocaleLowerCase('sv');
+    const row = this.db.pantry.find((p) => p.name === key);
+    if (row) row.active = active;
+    else this.db.pantry.push({ name: key, active });
+    this.#persist();
+  }
+
+  async seedPantry(names) {
+    if (this.db.pantry.length) return;
+    this.db.pantry = names.map((name) => ({ name, active: true }));
+    this.#persist();
+  }
+
+  async replaceGenerated(items, label) {
+    this.db.shopping = [
+      ...this.db.shopping.filter((i) => i.manual),
+      ...items.map((i, position) => ({ id: crypto.randomUUID(), manual: false, checked: false, pantry: false, position, ...i })),
+    ];
+    this.db.shoppingLabel = label;
+    this.#persist();
+  }
+
+  async addShoppingItem(item) {
+    this.db.shopping.push({ id: crypto.randomUUID(), manual: true, checked: false, pantry: false, position: 0, ...item });
+    this.#persist();
+  }
+
+  async updateShoppingItem(id, patch) {
+    const row = this.db.shopping.find((i) => i.id === id);
+    if (row) Object.assign(row, patch);
+    this.#persist();
+  }
+
+  async deleteShoppingItems(ids) {
+    this.db.shopping = this.db.shopping.filter((i) => !ids.includes(i.id));
+    if (!this.db.shopping.length) this.db.shoppingLabel = null;
+    this.#persist();
+  }
+
+  subscribeShopping() {
+    return () => {};
   }
 }
 
@@ -675,10 +736,93 @@ class SupabaseStore {
     this.#check(await this.sb.from('plan_entry').delete().eq('library_id', this.#lib()).eq('day', day).eq('slot', slot));
   }
 
+  async getMealsByIds(ids) {
+    if (!ids.length) return [];
+    const rows = this.#check(await this.sb.from('meal').select(MEAL_SELECT).in('id', ids));
+    return rows.map((r) => this.#hydrate(r, () => null));
+  }
+
   async listPlannedDays() {
     const rows = this.#check(
       await this.sb.from('plan_entry').select('day').eq('library_id', this.#lib()).order('day', { ascending: false }).limit(2000)
     );
     return [...new Set(rows.map((r) => r.day))];
+  }
+
+  /* Inköpslista */
+
+  async getShopping() {
+    const lib = this.#lib();
+    const [items, meta] = await Promise.all([
+      this.sb.from('shopping_item').select('*').eq('library_id', lib).order('position'),
+      this.sb.from('shopping_list').select('label').eq('library_id', lib).maybeSingle(),
+    ]);
+    return { label: this.#check(meta)?.label ?? null, items: this.#check(items) };
+  }
+
+  async listPantry() {
+    return this.#check(await this.sb.from('pantry_item').select('name, active').eq('library_id', this.#lib()));
+  }
+
+  async setPantry(name, active) {
+    this.#check(
+      await this.sb
+        .from('pantry_item')
+        .upsert({ library_id: this.#lib(), name: name.toLocaleLowerCase('sv'), active }, { onConflict: 'library_id,name' })
+    );
+  }
+
+  // Lägger in standardbasvaror första gången – bara om matsedeln aldrig haft några.
+  async seedPantry(names) {
+    const lib = this.#lib();
+    const { count } = await this.sb.from('pantry_item').select('name', { count: 'exact', head: true }).eq('library_id', lib);
+    if (count) return;
+    await this.sb.from('pantry_item').insert(names.map((name) => ({ library_id: lib, name, active: true })));
+  }
+
+  async replaceGenerated(items, label) {
+    const lib = this.#lib();
+    this.#check(await this.sb.from('shopping_item').delete().eq('library_id', lib).eq('manual', false));
+    if (items.length) {
+      this.#check(
+        await this.sb
+          .from('shopping_item')
+          .insert(items.map((i, position) => ({ ...i, library_id: lib, manual: false, position })))
+      );
+    }
+    this.#check(
+      await this.sb
+        .from('shopping_list')
+        .upsert({ library_id: lib, label, updated_at: new Date().toISOString() }, { onConflict: 'library_id' })
+    );
+  }
+
+  async addShoppingItem(item) {
+    this.#check(await this.sb.from('shopping_item').insert({ ...item, library_id: this.#lib(), manual: true }));
+  }
+
+  async updateShoppingItem(id, patch) {
+    this.#check(await this.sb.from('shopping_item').update(patch).eq('id', id));
+  }
+
+  async deleteShoppingItems(ids) {
+    if (ids.length) this.#check(await this.sb.from('shopping_item').delete().in('id', ids));
+  }
+
+  // Lyssnar på ändringar i listan (andra som bockar av). Returnerar en funktion som slutar lyssna.
+  subscribeShopping(onChange) {
+    try {
+      const channel = this.sb
+        .channel(`shopping-${this.#lib()}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'shopping_item', filter: `library_id=eq.${this.#lib()}` },
+          () => onChange()
+        )
+        .subscribe();
+      return () => this.sb.removeChannel(channel);
+    } catch {
+      return () => {};
+    }
   }
 }
