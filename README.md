@@ -89,6 +89,10 @@ Funktionen kan bara köras i SQL Editor, inte från appen.
 **Middag**. Tryck **+ Välj** i en ruta, välj **Egen matsedel** eller **Förslagsbank**, sök och
 tryck på en rätt – eller skriv något eget, t.ex. *Rester*. Allt sparas direkt.
 
+Finns rätten inte trycker man **+ Skapa ny maträtt "…"** direkt i väljaren: formuläret öppnas
+med namnet ifyllt, och när rätten sparas läggs den in i rutan och man kommer tillbaka till veckan.
+Hittar sökningen inget i den egna matsedeln men i förslagsbanken visas det också.
+
 - Pilarna byter vecka; *Sparade veckor* listar veckor som har planering.
 - *Kopiera förra veckan* fyller de tomma rutorna med förra veckans måltider.
 - Planen hör till matsedeln – alla som delar matsedeln ser och ändrar samma vecka.

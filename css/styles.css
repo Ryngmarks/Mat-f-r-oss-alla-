@@ -2252,3 +2252,14 @@ h3 {
 .shop-order .ing__remove:disabled {
   opacity: 0.25;
 }
+
+.picker__create {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.picker__create:empty {
+  display: none;
+}

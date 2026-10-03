@@ -217,6 +217,16 @@ export async function renderPlanner({ app, store, mondayIso, categories = [] }) 
           await store.setPlan(day, slot, entry);
           redraw();
         },
+        // Ny rätt direkt från väljaren: formuläret öppnas och rätten läggs in i rutan när den sparas.
+        onCreate: (name) => {
+          try {
+            sessionStorage.setItem(
+              PENDING_KEY,
+              JSON.stringify({ day, slot, name, label: `${label.toLocaleLowerCase('sv')} ${d.name.toLocaleLowerCase('sv')}`, back: `#/vecka/${from}`, at: Date.now() })
+            );
+          } catch {}
+          location.hash = '#/ny/plan';
+        },
       });
     })
   );
@@ -245,7 +255,25 @@ export async function renderPlanner({ app, store, mondayIso, categories = [] }) 
 
 let dlg;
 
-async function openPicker({ store, bank, title, onPick }) {
+export const PENDING_KEY = 'mat-for-oss-alla.pending-plan';
+
+// Läses av formuläret för ny maträtt när den skapas från veckoplaneringen.
+export function takePendingPlan() {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(PENDING_KEY));
+    return p && Date.now() - p.at < 60 * 60e3 ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingPlan() {
+  try {
+    sessionStorage.removeItem(PENDING_KEY);
+  } catch {}
+}
+
+async function openPicker({ store, bank, title, onPick, onCreate }) {
   if (!dlg) {
     dlg = document.createElement('dialog');
     dlg.className = 'sheet picker-sheet';
@@ -275,6 +303,7 @@ async function openPicker({ store, bank, title, onPick }) {
       }
       <input type="search" class="input picker__search" placeholder="Sök rätt eller ingrediens" autocomplete="off" enterkeyhint="search">
       <ul class="picker__grid" data-grid><li class="muted">Laddar…</li></ul>
+      <div class="picker__create" data-create></div>
       <p class="picker__or muted">eller skriv något eget</p>
       <form class="inline" data-free>
         <input class="input" name="text" placeholder="t.ex. Rester, Ute och äter" autocomplete="off" required>
@@ -314,6 +343,27 @@ async function openPicker({ store, bank, title, onPick }) {
       : `<li class="muted picker__empty">${
           q ? 'Inget matchar sökningen.' : source === 'bank' ? 'Förslagsbanken är tom.' : 'Inga rätter i matsedeln än.'
         }</li>`;
+
+    // Under listan: skapa ny rätt (med sökordet som namn), eller lägg in sökordet som text.
+    const name = query.trim();
+    const create = dlg.querySelector('[data-create]');
+    let bankHits = 0;
+    if (name && !meals.length && source === 'own' && bank) {
+      try {
+        lists.bank ??= await store.listBankMeals();
+        bankHits = lists.bank.filter((m) => fold(m.name).includes(q) || m.ingredients.some((i) => fold(i.name).includes(q))).length;
+      } catch {}
+    }
+    create.innerHTML = `
+      ${
+        bankHits
+          ? `<button type="button" class="btn btn--soft btn--block" data-show-bank>Visa ${bankHits} ${bankHits === 1 ? 'träff' : 'träffar'} i Förslagsbanken</button>`
+          : ''
+      }
+      <button type="button" class="btn ${name && !meals.length ? 'btn--primary' : 'btn--ghost'} btn--block" data-new-meal>
+        + Skapa ny maträtt${name ? ` ”${esc(name)}”` : ''}
+      </button>
+      ${name && !meals.length ? `<button type="button" class="link" data-as-text>Lägg bara in ”${esc(name)}” som text</button>` : ''}`;
   }
 
   dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
@@ -342,6 +392,21 @@ async function openPicker({ store, bank, title, onPick }) {
     } catch (err) {
       toast(err.message);
       b.disabled = false;
+    }
+  });
+  dlg.querySelector('[data-create]').addEventListener('click', async (e) => {
+    if (e.target.closest('[data-new-meal]')) {
+      dlg.close();
+      onCreate(query.trim());
+    } else if (e.target.closest('[data-show-bank]')) {
+      dlg.querySelector('[data-source="bank"]')?.click();
+    } else if (e.target.closest('[data-as-text]')) {
+      try {
+        await onPick({ meal_id: null, text: query.trim() });
+        dlg.close();
+      } catch (err) {
+        toast(err.message);
+      }
     }
   });
   dlg.querySelector('[data-free]').addEventListener('submit', async (e) => {

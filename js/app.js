@@ -4,7 +4,7 @@ import { esc, toast, confirmDialog, ICON } from './ui.js';
 import { openLibrarySheet } from './libraries.js';
 import { renderImport } from './import.js';
 import { renderSwipe } from './swipe.js';
-import { renderPlanner, toISO } from './planner.js';
+import { renderPlanner, toISO, takePendingPlan, clearPendingPlan } from './planner.js';
 import { renderShopping, stopShopping } from './shopping.js';
 
 const app = document.getElementById('app');
@@ -349,7 +349,8 @@ function renderNotFound() {
 
 const UNITS = ['g', 'kg', 'st', 'dl', 'ml', 'l', 'msk', 'tsk', 'krm', 'burk', 'paket', 'påse', 'klyfta', 'knippe'];
 
-async function renderForm(id) {
+async function renderForm(id, { fromPlan = false } = {}) {
+  const pending = !id && fromPlan ? takePendingPlan() : null;
   const meal = id ? await store.getMeal(id) : null;
   if (id && (!meal || !isHere(meal))) return renderNotFound();
   const known = await store.listIngredientNames().catch(() => []);
@@ -368,7 +369,7 @@ async function renderForm(id) {
   app.innerHTML = `
     <header class="top top--form">
       <div class="wrap narrow top__inner">
-        <a href="${meal ? `#/maltid/${meal.id}` : '#/'}" class="round round--plain" aria-label="Tillbaka">${ICON.back}</a>
+        <a href="${meal ? `#/maltid/${meal.id}` : pending ? pending.back : '#/'}" class="round round--plain" aria-label="Tillbaka">${ICON.back}</a>
         <span class="top__title">${meal ? 'Redigera maträtt' : 'Ny maträtt'}</span>
         <span class="round-spacer"></span>
       </div>
@@ -377,7 +378,7 @@ async function renderForm(id) {
     <form class="wrap narrow form" novalidate>
       <section class="field">
         <label class="label" for="name">Vad heter maträtten?</label>
-        <input id="name" name="name" class="input input--big" placeholder="t.ex. Kyckling Curry" value="${esc(meal?.name)}" autocomplete="off" required>
+        <input id="name" name="name" class="input input--big" placeholder="t.ex. Kyckling Curry" value="${esc(meal?.name ?? pending?.name)}" autocomplete="off" required>
       </section>
 
       <section class="field">
@@ -640,6 +641,19 @@ async function renderForm(id) {
         },
         { imageBlob: draft.imageBlob, removeImage: draft.removeImage }
       );
+      if (pending) {
+        const planName = nameEl.value.trim().replace(/\s+/g, ' ').replace(/^./, (c) => c.toLocaleUpperCase('sv'));
+        // Skapad från veckoplaneringen: lägg in rätten i rutan och gå tillbaka dit.
+        clearPendingPlan();
+        try {
+          await store.setPlan(pending.day, pending.slot, { meal_id: savedId, text: planName });
+          toast(`${planName} är skapad och inlagd på ${pending.label}`);
+        } catch (e) {
+          toast(`Rätten är sparad, men kunde inte läggas in i veckan: ${e.message}`);
+        }
+        location.hash = pending.back;
+        return;
+      }
       location.hash = `#/maltid/${savedId}`;
     } catch (err) {
       toast(err.message || 'Det gick inte att spara');
@@ -725,7 +739,7 @@ async function route() {
   try {
     if (!page) await renderHome();
     else if (page === 'maltid' && id) await renderDetail(id);
-    else if (page === 'ny') await renderForm(null);
+    else if (page === 'ny') await renderForm(null, { fromPlan: id === 'plan' });
     else if (page === 'redigera' && id) await renderForm(id);
     else if (page === 'importera') await renderImport({ app, store, categories });
     else if (page === 'valj') await renderSwipe({ app, store, media, tagline });
